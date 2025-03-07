@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+# Non C++
+venv
+
+# Non code
+build
+build.lib
+.vscode

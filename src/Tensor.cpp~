@@ -1,0 +1,185 @@
+#include "Tensor.h"
+#include "cuda_kernels.h"
+#include <iostream>
+
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+#endif
+
+Tensor::Tensor(const std::vector<int>& shape, bool use_gpu)
+    : shape_(shape), use_gpu_(use_gpu) {
+    allocate_memory();
+}
+
+Tensor::~Tensor() {
+    free_memory();
+}
+
+void Tensor::allocate_memory() {
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float* gpu_data;
+        cudaMalloc(&gpu_data, size * sizeof(float));
+        data_ = std::shared_ptr<float>(gpu_data, [](float* ptr) { cudaFree(ptr); });
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        data_ = std::shared_ptr<float>(new float[size], [](float* ptr) { delete[] ptr; });
+    }
+}
+
+void Tensor::free_memory() {
+    // Memory is automatically managed by shared_ptr
+}
+
+Tensor Tensor::add(const Tensor& other, float alpha) const {
+    if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
+
+    Tensor result(shape_, use_gpu_);
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_add(data_.get(), other.data_.get(), alpha, result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data_.get()[i] = data_.get()[i] + alpha * other.data_.get()[i];
+        }
+    }
+
+    return result;
+}
+
+float Tensor::dot(const Tensor& other) const {
+    if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
+
+    float result = 0.0f;
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float* d_result;
+        cudaMalloc(&d_result, sizeof(float));
+        cudaMemset(d_result, 0, sizeof(float));
+        launch_cuda_dot(data_.get(), other.data_.get(), d_result, size);
+        cudaMemcpy(&result, d_result, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaFree(d_result);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result += data_.get()[i] * other.data_.get()[i];
+        }
+    }
+
+    return result;
+}
+
+Tensor Tensor::conv2d_cpu(const Tensor& kernel, int stride, bool padding) const {
+    // Input dimensions
+    int x = shape_[0];
+    int y = shape_[1];
+    int z = shape_[2];
+
+    // Kernel dimensions
+    int a = kernel.shape()[0];
+    int b = kernel.shape()[1];
+    int k = kernel.shape()[3]; // Number of filters
+
+    // Padding
+    int pad = padding ? (a - 1) / 2 : 0;
+
+    // Output dimensions
+    int out_x = (x - a + 2 * pad) / stride + 1;
+    int out_y = (y - b + 2 * pad) / stride + 1;
+
+    // Create output tensor
+    Tensor output({out_x, out_y, k}, use_gpu_);
+
+    // Perform convolution
+    for (int filter = 0; filter < k; ++filter) {
+        for (int i = 0; i < out_x; ++i) {
+            for (int j = 0; j < out_y; ++j) {
+                float sum = 0.0f;
+
+                for (int di = 0; di < a; ++di) {
+                    for (int dj = 0; dj < b; ++dj) {
+                        for (int dz = 0; dz < z; ++dz) {
+                            int input_i = i * stride + di - pad;
+                            int input_j = j * stride + dj - pad;
+
+                            if (input_i >= 0 && input_i < x && input_j >= 0 && input_j < y) {
+                                float input_val = data_.get()[input_i * y * z + input_j * z + dz];
+                                float kernel_val = kernel.data()[di * b * z * k + dj * z * k + dz * k + filter];
+                                sum += input_val * kernel_val;
+                            }
+                        }
+                    }
+                }
+
+                output.data()[i * out_y * k + j * k + filter] = sum;
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::conv2d(const Tensor& kernel, int stride, bool padding) const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        int x = shape_[0];
+        int y = shape_[1];
+        int z = shape_[2];
+        int a = kernel.shape()[0];
+        int b = kernel.shape()[1];
+        int k = kernel.shape()[3];
+        int pad = padding ? (a - 1) / 2 : 0;
+
+        int out_x = (x - a + 2 * pad) / stride + 1;
+        int out_y = (y - b + 2 * pad) / stride + 1;
+
+        Tensor output({out_x, out_y, k}, use_gpu_);
+
+        launch_cuda_conv2d(data_.get(), kernel.data(), output.data(), x, y, z, a, b, k, stride, pad);
+
+        return output;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Call the CPU implementation
+        return conv2d_cpu(kernel, stride, padding);
+    }
+}
+
+
+
+Tensor Tensor::power(float exponent) const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        Tensor result(shape_, use_gpu_);
+        size_t size = 1;
+        for (int dim : shape_) size *= dim;
+
+        launch_cuda_power(data_.get(), result.data(), exponent, size);
+        return result;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Call the CPU implementation
+        return power_cpu(exponent);
+    }
+}
+
