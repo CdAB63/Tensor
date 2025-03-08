@@ -15,6 +15,47 @@ void print_tensor(const Tensor& tensor, const std::string& name) {
     std::cout << "\n";
 }
 
+Tensor matrix_multiplication(const Tensor& A, const Tensor& B) {
+    if (A.shape().size() != 2 || B.shape().size() != 2 || A.shape()[1] != B.shape()[0]) {
+        throw std::runtime_error("Invalid shapes for matrix multiplication");
+    }
+
+    int m = A.shape()[0];
+    int n = A.shape()[1];
+    int p = B.shape()[1];
+
+    Tensor result({m, p}, A.use_gpu());
+
+    for (int i = 0; i < m; ++i) {
+        for (int k = 0; k < p; ++k) {
+            float sum = 0.0f;
+            for (int j = 0; j < n; ++j) {
+                sum += A.data()[i * n + j] * B.data()[j * p + k];
+            }
+            result.data()[i * p + k] = sum;
+        }
+    }
+
+    return result;
+}
+
+Tensor dot_product(const Tensor& A, const Tensor& B) {
+    if (A.shape().size() != 1 || B.shape().size() != 1 || A.shape()[0] != B.shape()[0]) {
+        throw std::runtime_error("Invalid shapes for dot product");
+    }
+
+    int n = A.shape()[0];
+    Tensor result({1}, A.use_gpu());
+
+    float sum = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        sum += A.data()[i] * B.data()[i];
+    }
+    result.data()[0] = sum;
+
+    return result;
+}
+
 int main() {
     // Create two tensors (2x2)
     Tensor A({2, 2}, false); // CPU tensor
@@ -36,8 +77,8 @@ int main() {
     print_tensor(C, "C = A + B");
 
     // Test dot product
-    float dot_product = A.dot(B);
-    std::cout << "Dot product: " << dot_product << "\n\n";
+    float dot_result = A.dot(B);
+    std::cout << "Dot product: " << dot_result << "\n\n";
 
     // Test subtraction: D = A - B
     Tensor D = A.subtract(B);
@@ -95,40 +136,40 @@ int main() {
     }
     std::cout << "\n";
 
-        // Create a tensor (2x3x4)
-        Tensor A1({2, 3, 4}, false);
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, false);
 
-        // Initialize A with dummy data
-        for (int i = 0; i < 2 * 3 * 4; ++i) {
-            A1.data()[i] = static_cast<float>(i);
-        }
-    
-        // Test sum along axis 1
-        Tensor sum_result = A1.sum(1);
-        print_tensor(sum_result, "Sum along axis 1");
-    
-        // Test mean along axis 1
-        Tensor mean_result = A1.mean(1);
-        print_tensor(mean_result, "Mean along axis 1");
-    
-        // Test max along axis 1
-        Tensor max_result = A1.max(1);
-        print_tensor(max_result, "Max along axis 1");
-    
-        // Test min along axis 1
-        Tensor min_result = A1.min(1);
-        print_tensor(min_result, "Min along axis 1");
-    
-        // Test argmax along axis 1
-        Tensor argmax_result = A1.argmax(1);
-        print_tensor(argmax_result, "Argmax along axis 1");
-    
-        // Test argmin along axis 1
-        Tensor argmin_result = A1.argmin(1);
-        print_tensor(argmin_result, "Argmin along axis 1");
-    
+    // Initialize A with dummy data
+    for (int i = 0; i < 2 * 3 * 4; ++i) {
+        A1.data()[i] = static_cast<float>(i);
+    }
+
+    // Test sum along axis 1
+    Tensor sum_result = A1.sum(1);
+    print_tensor(sum_result, "Sum along axis 1");
+
+    // Test mean along axis 1
+    Tensor mean_result = A1.mean(1);
+    print_tensor(mean_result, "Mean along axis 1");
+
+    // Test max along axis 1
+    Tensor max_result = A1.max(1);
+    print_tensor(max_result, "Max along axis 1");
+
+    // Test min along axis 1
+    Tensor min_result = A1.min(1);
+    print_tensor(min_result, "Min along axis 1");
+
+    // Test argmax along axis 1
+    Tensor argmax_result = A1.argmax(1);
+    print_tensor(argmax_result, "Argmax along axis 1");
+
+    // Test argmin along axis 1
+    Tensor argmin_result = A1.argmin(1);
+    print_tensor(argmin_result, "Argmin along axis 1");
+
     Tensor A2({2, 2}, false);
-    
+
     A2.data()[0] = 4.0f; A2.data()[1] = 1.0f;
     A2.data()[2] = 2.0f; A2.data()[3] = 3.0f;
 
@@ -148,18 +189,31 @@ int main() {
     std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
     print_tensor(eigenvector, "Dominant eigenvector");
 
+    // Matrix multiplication
     Tensor A3({2, 3}, false); // 2x3 matrix
-    Tensor B2({3, 4}, false); // 3x4 matrix
+    Tensor B3({3, 4}, false); // 3x4 matrix
+
+    // Initialize A and B with dummy data
+    for (int i = 0; i < 6; ++i) A3.data()[i] = static_cast<float>(i + 1);
+    for (int i = 0; i < 12; ++i) B3.data()[i] = static_cast<float>(i + 1);
+
+    // Perform matrix multiplication using einsum
+    Tensor C3 = A3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(matrix_multiplication), B3);
+    print_tensor(C3, "Matrix multiplication using einsum");
+
+    // Dot product
+    Tensor D3({3}, false); // 3-element vector
+    Tensor E3({3}, false); // 3-element vector
 
     // Initialize D and E with dummy data
     for (int i = 0; i < 3; ++i) {
-        D.data()[i] = static_cast<float>(i + 1);
-        E.data()[i] = static_cast<float>(i + 1);
+        D3.data()[i] = static_cast<float>(i + 1);
+        E3.data()[i] = static_cast<float>(i + 1);
     }
 
     // Perform dot product using einsum
-    Tensor F1 = D.einsum("i,i->", E);
-    print_tensor(F, "Dot product using einsum");
+    Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
+    print_tensor(F3, "Dot product using einsum");
 
     return 0;
 }

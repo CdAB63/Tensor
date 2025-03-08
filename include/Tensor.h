@@ -5,13 +5,19 @@
 #include <memory>
 #include <stdexcept>
 #include <cmath>
+#include <functional>
+#include "cuda_kernels.h"
+#include <iostream>
 
 class Tensor {
     public:
+        using EinsumOperation = std::function<Tensor(const Tensor&, const Tensor&)>;
+
         Tensor(const std::vector<int>& shape, bool use_gpu = false);
         ~Tensor();
     
         // Basic operations
+        bool use_gpu() const;
         Tensor add(const Tensor& other, float alpha = 1.0f) const;
         float dot(const Tensor& other) const;
         Tensor conv2d(const Tensor& kernel, int stride, bool padding) const;
@@ -33,8 +39,8 @@ class Tensor {
         float det() const; // Determinant of a square matrix
         std::pair<float, Tensor> eig() const; // Eigenvalues and eigenvectors
         std::tuple<Tensor, Tensor, Tensor> svd() const; // Singular Value Decomposition
-        Tensor einsum(const std::string& equation, const Tensor& other) const;
-        
+        Tensor einsum(const EinsumOperation& operation, const Tensor& other) const;
+
         // Accessors
         float* data() { return data_.get(); }
         const float* data() const { return data_.get(); }

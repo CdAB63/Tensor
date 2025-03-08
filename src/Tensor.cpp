@@ -1,6 +1,4 @@
 #include "Tensor.h"
-#include "cuda_kernels.h"
-#include <iostream>
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
@@ -30,6 +28,10 @@ void Tensor::allocate_memory() {
     } else {
         data_ = std::shared_ptr<float>(new float[size], [](float* ptr) { delete[] ptr; });
     }
+}
+
+bool Tensor::use_gpu() const {
+    return use_gpu_;
 }
 
 void Tensor::free_memory() {
@@ -466,63 +468,12 @@ Tensor Tensor::matmul(const Tensor& other) const {
     return result;
 }
 
-Tensor Tensor::einsum(const std::string& equation, const Tensor& other) const {
-    std::cout << "Processing einsum equation: " << equation << std::endl; // Debugging
-
-    // Split the equation into input and output parts
-    size_t arrow_pos = equation.find("->");
-    std::string input_eq = equation.substr(0, arrow_pos);
-    std::string output_eq = (arrow_pos == std::string::npos) ? "" : equation.substr(arrow_pos + 2);
-
-    // Split input_eq into individual tensor indices
-    size_t comma_pos = input_eq.find(',');
-    std::string indices_A = input_eq.substr(0, comma_pos);
-    std::string indices_B = input_eq.substr(comma_pos + 1);
-
-    // Determine the output shape
-    std::vector<int> output_shape;
-    for (char c : output_eq) {
-        int dim_A = (indices_A.find(c) != std::string::npos) ? shape_[indices_A.find(c)] : -1;
-        int dim_B = (indices_B.find(c) != std::string::npos) ? other.shape()[indices_B.find(c)] : -1;
-        if (dim_A != -1 && dim_B != -1 && dim_A != dim_B) {
-            throw std::runtime_error("Dimension mismatch in einsum");
-        }
-        output_shape.push_back((dim_A != -1) ? dim_A : dim_B);
-    }
-
-    // Create the output tensor
-    Tensor result(output_shape, use_gpu_);
-
-    // Perform the summation
-    if (equation == "ij,jk->ik") {
-        // Matrix multiplication
-        int m = shape_[0];
-        int n = shape_[1];
-        int p = other.shape()[1];
-
-        for (int i = 0; i < m; ++i) {
-            for (int k = 0; k < p; ++k) {
-                float sum = 0.0f;
-                for (int j = 0; j < n; ++j) {
-                    sum += data_.get()[i * n + j] * other.data()[j * p + k];
-                }
-                result.data()[i * p + k] = sum;
-            }
-        }
-    } else if (equation == "i,i->") {
-        // Dot product
-        int n = shape_[0];
-        float sum = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            sum += data_.get()[i] * other.data()[i];
-        }
-        result.data()[0] = sum;
-    } else {
-        throw std::runtime_error("Unsupported einsum equation: " + equation);
-    }
-
-    return result;
+Tensor Tensor::einsum(const EinsumOperation& operation, const Tensor& other) const {
+    // Perform the operation
+    return operation(*this, other);
 }
+
+// Now we define 
 
 Tensor Tensor::inv() const {
     if (shape_.size() != 2 || shape_[0] != shape_[1]) {
@@ -676,4 +627,3 @@ std::tuple<Tensor, Tensor, Tensor> Tensor::svd() const {
     // Placeholder for actual SVD computation
     throw std::runtime_error("SVD not implemented");
 }
-
