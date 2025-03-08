@@ -40,6 +40,13 @@ class Tensor {
         std::pair<float, Tensor> eig() const; // Eigenvalues and eigenvectors
         std::tuple<Tensor, Tensor, Tensor> svd() const; // Singular Value Decomposition
         Tensor einsum(const EinsumOperation& operation, const Tensor& other) const;
+        Tensor reshape(const std::vector<int>& new_shape) const;
+        Tensor flatten() const;
+        Tensor expand_dims(int axis) const;
+        Tensor squeeze() const;
+        Tensor concat(const Tensor& other, int axis) const;
+        static Tensor stack(const std::vector<Tensor>& tensors, int axis);
+        Tensor permute(const std::vector<int>& new_order) const;
 
         // Accessors
         float* data() { return data_.get(); }

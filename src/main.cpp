@@ -3,16 +3,21 @@
 
 void print_tensor(const Tensor& tensor, const std::string& name) {
     std::cout << name << ":\n";
-    const float* data = tensor.data();
-    std::vector<int> shape = tensor.shape();
-    int size = 1;
-    for (int dim : shape) size *= dim;
-
-    for (int i = 0; i < size; ++i) {
-        std::cout << data[i] << " ";
-        if ((i + 1) % shape[1] == 0) std::cout << "\n";
+    std::cout << "Shape: ";
+    for (int dim : tensor.shape()) {
+        std::cout << dim << " ";
     }
     std::cout << "\n";
+
+    const float* data = tensor.data();
+    int size = 1;
+    for (int dim : tensor.shape()) size *= dim;
+
+    std::cout << "Data: ";
+    for (int i = 0; i < size; ++i) {
+        std::cout << data[i] << " ";
+    }
+    std::cout << "\n\n";
 }
 
 Tensor matrix_multiplication(const Tensor& A, const Tensor& B) {
@@ -214,6 +219,57 @@ int main() {
     // Perform dot product using einsum
     Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
     print_tensor(F3, "Dot product using einsum");
+
+    // Create a 2x3 tensor
+    Tensor A4({2, 3}, false); // CPU tensor
+    for (int i = 0; i < 6; ++i) A4.data()[i] = static_cast<float>(i + 1);
+    print_tensor(A4, "Original Tensor A");
+
+    // Test reshape
+    Tensor reshaped = A4.reshape({3, 2});
+    print_tensor(reshaped, "Reshaped Tensor A (3x2)");
+
+    // Test flatten
+    Tensor flattened = A4.flatten();
+    print_tensor(flattened, "Flattened Tensor A");
+
+    // Test expand_dims
+    Tensor expanded = A4.expand_dims(1); // Add a dimension at axis 1
+    print_tensor(expanded, "Expanded Tensor A (axis=1)");
+
+    // Test squeeze
+    Tensor squeezed = expanded.squeeze(); // Remove dimensions of size 1
+    print_tensor(squeezed, "Squeezed Tensor (should match original A)");
+
+    // Create another 2x3 tensor
+    Tensor B4({2, 3}, false); // CPU tensor
+    for (int i = 0; i < 6; ++i) B4.data()[i] = static_cast<float>(i + 7);
+    print_tensor(B4, "Tensor B");
+
+    // Test concat
+    Tensor concatenated = A4.concat(B4, 0); // Concatenate along axis 0
+    print_tensor(concatenated, "Concatenated Tensor (A and B along axis 0)");
+
+    // Test stack
+    Tensor stacked = Tensor::stack({A4, B4}, 0); // Stack along axis 0
+    print_tensor(stacked, "Stacked Tensor (A and B along axis 0)");
+
+    // Test permute
+    Tensor permuted = A4.permute({1, 0}); // Swap dimensions
+    print_tensor(permuted, "Permuted Tensor A (swapped dimensions)");
+
+    // Additional tests for edge cases
+    Tensor C4({1, 3, 1, 2}, false); // Tensor with singleton dimensions
+    for (int i = 0; i < 6; ++i) C4.data()[i] = static_cast<float>(i + 1);
+    print_tensor(C4, "Tensor C (1x3x1x2)");
+
+    // Test squeeze on tensor with singleton dimensions
+    Tensor squeezed_C = C4.squeeze();
+    print_tensor(squeezed_C, "Squeezed Tensor C");
+
+    // Test expand_dims on squeezed tensor
+    Tensor expanded_C = squeezed_C.expand_dims(1);
+    print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
 
     return 0;
 }

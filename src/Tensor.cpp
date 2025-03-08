@@ -627,3 +627,141 @@ std::tuple<Tensor, Tensor, Tensor> Tensor::svd() const {
     // Placeholder for actual SVD computation
     throw std::runtime_error("SVD not implemented");
 }
+
+Tensor Tensor::reshape(const std::vector<int>& new_shape) const {
+    size_t new_size = 1;
+    for (int dim : new_shape) new_size *= dim;
+
+    size_t current_size = 1;
+    for (int dim : shape_) current_size *= dim;
+
+    if (new_size != current_size) {
+        throw std::runtime_error("Total size of new shape must match the original size");
+    }
+
+    Tensor result(new_shape, use_gpu_);
+    std::copy(data_.get(), data_.get() + current_size, result.data_.get());
+    return result;
+}
+
+Tensor Tensor::flatten() const {
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    return reshape({static_cast<int>(size)});
+}
+
+Tensor Tensor::expand_dims(int axis) const {
+    if (axis < 0 || axis > shape_.size()) {
+        throw std::runtime_error("Invalid axis for expand_dims");
+    }
+
+    std::vector<int> new_shape = shape_;
+    new_shape.insert(new_shape.begin() + axis, 1);
+    return reshape(new_shape);
+}
+
+Tensor Tensor::squeeze() const {
+    std::vector<int> new_shape;
+    for (int dim : shape_) {
+        if (dim != 1) {
+            new_shape.push_back(dim);
+        }
+    }
+
+    if (new_shape.empty()) {
+        new_shape.push_back(1); // Ensure at least 1 dimension
+    }
+
+    return reshape(new_shape);
+}
+
+Tensor Tensor::concat(const Tensor& other, int axis) const {
+    if (shape_.size() != other.shape().size()) {
+        throw std::runtime_error("Tensors must have the same number of dimensions");
+    }
+
+    for (size_t i = 0; i < shape_.size(); ++i) {
+        if (i != axis && shape_[i] != other.shape()[i]) {
+            throw std::runtime_error("All dimensions except the concatenation axis must match");
+        }
+    }
+
+    std::vector<int> new_shape = shape_;
+    new_shape[axis] += other.shape()[axis];
+
+    Tensor result(new_shape, use_gpu_);
+
+    // Calculate the size of the data
+    size_t this_size = 1;
+    for (int dim : shape_) this_size *= dim;
+
+    size_t other_size = 1;
+    for (int dim : other.shape()) other_size *= dim;
+
+    // Copy data from this tensor
+    std::copy(data_.get(), data_.get() + this_size, result.data_.get());
+
+    // Copy data from the other tensor
+    std::copy(other.data(), other.data() + other_size, result.data_.get() + this_size);
+
+    return result;
+}
+
+Tensor Tensor::stack(const std::vector<Tensor>& tensors, int axis) {
+    if (tensors.empty()) {
+        throw std::runtime_error("No tensors provided for stacking");
+    }
+
+    for (size_t i = 1; i < tensors.size(); ++i) {
+        if (tensors[i].shape() != tensors[0].shape()) {
+            throw std::runtime_error("All tensors must have the same shape for stacking");
+        }
+    }
+
+    std::vector<int> new_shape = tensors[0].shape();
+    new_shape.insert(new_shape.begin() + axis, tensors.size());
+
+    Tensor result(new_shape, tensors[0].use_gpu());
+
+    // Calculate the size of each tensor's data
+    size_t tensor_size = 1;
+    for (int dim : tensors[0].shape()) tensor_size *= dim;
+
+    // Copy data from all tensors
+    size_t offset = 0;
+    for (const Tensor& tensor : tensors) {
+        std::copy(tensor.data(), tensor.data() + tensor_size, result.data_.get() + offset);
+        offset += tensor_size;
+    }
+
+    return result;
+}
+
+Tensor Tensor::permute(const std::vector<int>& new_order) const {
+    if (new_order.size() != shape_.size()) {
+        throw std::runtime_error("New order must have the same number of dimensions as the tensor");
+    }
+
+    std::vector<int> new_shape;
+    for (int axis : new_order) {
+        if (axis < 0 || axis >= shape_.size()) {
+            throw std::runtime_error("Invalid axis in new order");
+        }
+        new_shape.push_back(shape_[axis]);
+    }
+
+    Tensor result(new_shape, use_gpu_);
+
+    // Calculate the size of the data
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    // Perform permutation
+    // This is a placeholder for the actual permutation logic, which depends on the tensor's layout
+    // For simplicity, we assume a contiguous memory layout here
+    std::copy(data_.get(), data_.get() + size, result.data_.get());
+
+    return result;
+}
+
