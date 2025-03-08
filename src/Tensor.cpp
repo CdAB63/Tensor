@@ -765,3 +765,215 @@ Tensor Tensor::permute(const std::vector<int>& new_order) const {
     return result;
 }
 
+// Helper function to compute broadcasted shape
+std::vector<int> Tensor::broadcast_shapes(const std::vector<int>& shape1, const std::vector<int>& shape2) {
+    std::vector<int> result_shape;
+    int max_dims = std::max(shape1.size(), shape2.size());
+
+    // Pad shapes with 1s on the left to make them the same length
+    std::vector<int> padded_shape1(max_dims, 1);
+    std::vector<int> padded_shape2(max_dims, 1);
+
+    std::copy(shape1.rbegin(), shape1.rend(), padded_shape1.rbegin());
+    std::copy(shape2.rbegin(), shape2.rend(), padded_shape2.rbegin());
+
+    // Compute the broadcasted shape
+    for (int i = 0; i < max_dims; ++i) {
+        int dim1 = padded_shape1[i];
+        int dim2 = padded_shape2[i];
+
+        if (dim1 != dim2 && dim1 != 1 && dim2 != 1) {
+            throw std::runtime_error("Shapes are not broadcastable");
+        }
+
+        result_shape.push_back(std::max(dim1, dim2));
+    }
+
+    return result_shape;
+}
+
+// Broadcast two tensors to the same shape
+std::pair<Tensor, Tensor> Tensor::broadcast_tensors(const Tensor& A, const Tensor& B) {
+    std::vector<int> broadcasted_shape = broadcast_shapes(A.shape(), B.shape());
+
+    Tensor A_broadcasted = A;
+    Tensor B_broadcasted = B;
+
+    // Expand dimensions of A if necessary
+    while (A_broadcasted.shape().size() < broadcasted_shape.size()) {
+        A_broadcasted = A_broadcasted.expand_dims(0);
+    }
+
+    // Expand dimensions of B if necessary
+    while (B_broadcasted.shape().size() < broadcasted_shape.size()) {
+        B_broadcasted = B_broadcasted.expand_dims(0);
+    }
+
+    // Repeat data along new dimensions for A
+    for (size_t i = 0; i < broadcasted_shape.size(); ++i) {
+        if (A_broadcasted.shape()[i] == 1 && broadcasted_shape[i] > 1) {
+            A_broadcasted = A_broadcasted.repeat(i, broadcasted_shape[i]);
+        }
+    }
+
+    // Repeat data along new dimensions for B
+    for (size_t i = 0; i < broadcasted_shape.size(); ++i) {
+        if (B_broadcasted.shape()[i] == 1 && broadcasted_shape[i] > 1) {
+            B_broadcasted = B_broadcasted.repeat(i, broadcasted_shape[i]);
+        }
+    }
+
+    return {A_broadcasted, B_broadcasted};
+}
+
+// Element-wise greater-than comparison
+Tensor Tensor::operator>(const Tensor& other) const {
+    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
+
+    Tensor result(A_broadcasted.shape(), use_gpu_);
+    size_t size = 1;
+    for (int dim : A_broadcasted.shape()) size *= dim;
+
+    for (size_t i = 0; i < size; ++i) {
+        result.data()[i] = (A_broadcasted.data()[i] > B_broadcasted.data()[i]) ? 1.0f : 0.0f;
+    }
+
+    return result;
+}
+
+// Element-wise equality comparison
+Tensor Tensor::operator==(const Tensor& other) const {
+    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
+
+    Tensor result(A_broadcasted.shape(), use_gpu_);
+    size_t size = 1;
+    for (int dim : A_broadcasted.shape()) size *= dim;
+
+    for (size_t i = 0; i < size; ++i) {
+        result.data()[i] = (A_broadcasted.data()[i] == B_broadcasted.data()[i]) ? 1.0f : 0.0f;
+    }
+
+    return result;
+}
+
+Tensor Tensor::repeat(int axis, int repeats) const {
+    if (axis < 0 || axis >= shape_.size()) {
+        throw std::runtime_error("Invalid axis for repeat");
+    }
+
+    if (repeats < 1) {
+        throw std::runtime_error("Number of repeats must be at least 1");
+    }
+
+    // Compute the new shape
+    std::vector<int> new_shape = shape_;
+    new_shape[axis] *= repeats;
+
+    Tensor result(new_shape, use_gpu_);
+
+    // Compute strides
+    size_t stride = 1;
+    for (int i = axis + 1; i < shape_.size(); ++i) {
+        stride *= shape_[i];
+    }
+
+    // Repeat data along the specified axis
+    size_t input_offset = 0;
+    size_t output_offset = 0;
+
+    for (int i = 0; i < shape_[axis]; ++i) {
+        for (int r = 0; r < repeats; ++r) {
+            std::copy(data_.get() + input_offset, data_.get() + input_offset + stride,
+                      result.data_.get() + output_offset);
+            output_offset += stride;
+        }
+        input_offset += stride;
+    }
+
+    return result;
+}
+
+// Boolean indexing
+Tensor Tensor::operator[](const Tensor& mask) const {
+    if (mask.shape() != shape_) {
+        throw std::runtime_error("Mask shape must match tensor shape");
+    }
+
+    // Calculate the size of the tensor data
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    // Count the number of true values in the mask
+    size_t count = 0;
+    for (size_t i = 0; i < size; ++i) {
+        if (mask.data_.get()[i] != 0.0f) {
+            ++count;
+        }
+    }
+
+    // Create a result tensor with the selected elements
+    Tensor result({static_cast<int>(count)}, use_gpu_);
+
+    // Copy the selected elements
+    size_t index = 0;
+    for (size_t i = 0; i < size; ++i) {
+        if (mask.data_.get()[i] != 0.0f) {
+            result.data_.get()[index++] = data_.get()[i];
+        }
+    }
+
+    return result;
+}
+
+// Masked assignment
+Tensor& Tensor::operator=(const std::pair<Tensor, float>& masked_assignment) {
+    const Tensor& mask = masked_assignment.first;
+    float value = masked_assignment.second;
+
+    if (mask.shape() != shape_) {
+        throw std::runtime_error("Mask shape must match tensor shape");
+    }
+
+    // Calculate the size of the tensor data
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    // Set elements where the mask is true to the specified value
+    for (size_t i = 0; i < size; ++i) {
+        if (mask.data_.get()[i] != 0.0f) {
+            data_.get()[i] = value;
+        }
+    }
+
+    return *this;
+}
+
+// Helper function to create a boolean tensor from a condition
+Tensor Tensor::from_condition(const Tensor& condition) {
+    Tensor result(condition.shape(), condition.use_gpu());
+
+    // Calculate the size of the tensor data
+    size_t size = 1;
+    for (int dim : condition.shape()) size *= dim;
+
+    for (size_t i = 0; i < size; ++i) {
+        result.data_.get()[i] = (condition.data_.get()[i] != 0.0f) ? 1.0f : 0.0f;
+    }
+
+    return result;
+}
+
+Tensor Tensor::operator>(float scalar) const {
+    Tensor result(shape_, use_gpu_);
+
+    // Calculate the size of the tensor data
+    size_t size = 1;
+    for (int dim : shape_) size *= dim;
+
+    // Perform element-wise comparison
+    for (size_t i = 0; i < size; ++i) {
+        result.data_.get()[i] = (data_.get()[i] > scalar) ? 1.0f : 0.0f;
+    }
+
+    return result;
+}

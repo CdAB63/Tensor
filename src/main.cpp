@@ -271,5 +271,48 @@ int main() {
     Tensor expanded_C = squeezed_C.expand_dims(1);
     print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
 
+    // Create tensors
+    Tensor A5({2, 3}, false); // 2x3 tensor
+    Tensor B5({3}, false);    // 3-element vector
+    
+    // Initialize tensors
+    for (int i = 0; i < 6; ++i) A5.data()[i] = static_cast<float>(i + 1);
+    for (int i = 0; i < 3; ++i) B5.data()[i] = static_cast<float>(i + 1);
+    
+    // Print tensors
+    print_tensor(A5, "Tensor A");
+    print_tensor(B5, "Tensor B");
+    
+    // Test broadcasting
+    auto [A_broadcasted, B_broadcasted] = Tensor::broadcast_tensors(A5, B5);
+    print_tensor(A_broadcasted, "Broadcasted Tensor A");
+    print_tensor(B_broadcasted, "Broadcasted Tensor B");
+    
+    // Test element-wise comparison
+    Tensor greater = A5 > B5;
+    print_tensor(greater, "A > B");
+    
+    Tensor equal = A4 == B4;
+    print_tensor(equal, "A == B");
+
+    // Create a tensor
+    Tensor A6({2, 3}, false); // 2x3 tensor
+    for (int i = 0; i < 6; ++i) A6.data()[i] = static_cast<float>(i + 1);
+
+    // Print original tensor
+    print_tensor(A6, "Original Tensor A");
+
+    // Create a boolean mask by comparing with a scalar
+    Tensor mask = A6 > 3.0f;
+    print_tensor(mask, "Mask (A > 3)");
+
+    // Select elements where the mask is true
+    Tensor selected = A6[mask];
+    print_tensor(selected, "Selected Elements (A[mask])");
+
+    // Set elements where the mask is true to a new value
+    A6 = {mask, 0.0f}; // Set elements > 3 to 0
+    print_tensor(A6, "Modified Tensor A");
+
     return 0;
 }

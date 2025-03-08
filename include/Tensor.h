@@ -47,6 +47,18 @@ class Tensor {
         Tensor concat(const Tensor& other, int axis) const;
         static Tensor stack(const std::vector<Tensor>& tensors, int axis);
         Tensor permute(const std::vector<int>& new_order) const;
+        static std::vector<int> broadcast_shapes(const std::vector<int>& shape1, const std::vector<int>& shape2);
+        static std::pair<Tensor, Tensor> broadcast_tensors(const Tensor& A, const Tensor& B);
+        Tensor repeat(int axis, int repeats) const;
+        Tensor operator[](const Tensor& mask) const;
+        Tensor& operator=(const std::pair<Tensor, float>& masked_assignment);
+        static Tensor from_condition(const Tensor& condition);
+        Tensor operator>(float scalar) const;
+
+
+    // Element-wise comparison
+    Tensor operator>(const Tensor& other) const;
+    Tensor operator==(const Tensor& other) const;
 
         // Accessors
         float* data() { return data_.get(); }
