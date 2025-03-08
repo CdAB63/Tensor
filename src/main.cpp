@@ -302,17 +302,16 @@ int main() {
     // Print original tensor
     print_tensor(A6, "Original Tensor A");
 
-    // Create a boolean mask by comparing with a scalar
+    // Compare with a scalar
     Tensor mask = A6 > 3.0f;
     print_tensor(mask, "Mask (A > 3)");
 
-    // Select elements where the mask is true
-    Tensor selected = A6[mask];
-    print_tensor(selected, "Selected Elements (A[mask])");
+    // Compare with another tensor (broadcasting)
+    Tensor B6({3}, false); // 3-element vector
+    for (int i = 0; i < 3; ++i) B6.data()[i] = static_cast<float>(i + 2);
 
-    // Set elements where the mask is true to a new value
-    A6 = {mask, 0.0f}; // Set elements > 3 to 0
-    print_tensor(A6, "Modified Tensor A");
+    Tensor mask2 = A6 > B6;
+    print_tensor(mask2, "Mask (A > B)");
 
     return 0;
 }

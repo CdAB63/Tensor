@@ -827,19 +827,19 @@ std::pair<Tensor, Tensor> Tensor::broadcast_tensors(const Tensor& A, const Tenso
 }
 
 // Element-wise greater-than comparison
-Tensor Tensor::operator>(const Tensor& other) const {
-    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
-
-    Tensor result(A_broadcasted.shape(), use_gpu_);
-    size_t size = 1;
-    for (int dim : A_broadcasted.shape()) size *= dim;
-
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = (A_broadcasted.data()[i] > B_broadcasted.data()[i]) ? 1.0f : 0.0f;
-    }
-
-    return result;
-}
+//Tensor Tensor::operator>(const Tensor& other) const {
+//    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
+//
+//    Tensor result(A_broadcasted.shape(), use_gpu_);
+//    size_t size = 1;
+//    for (int dim : A_broadcasted.shape()) size *= dim;
+//
+//    for (size_t i = 0; i < size; ++i) {
+//        result.data()[i] = (A_broadcasted.data()[i] > B_broadcasted.data()[i]) ? 1.0f : 0.0f;
+//    }
+//
+//    return result;
+//}
 
 // Element-wise equality comparison
 Tensor Tensor::operator==(const Tensor& other) const {
@@ -970,10 +970,47 @@ Tensor Tensor::operator>(float scalar) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Perform element-wise comparison
-    for (size_t i = 0; i < size; ++i) {
-        result.data_.get()[i] = (data_.get()[i] > scalar) ? 1.0f : 0.0f;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_greater_than_scalar(data_.get(), result.data_.get(), scalar, size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation
+        for (size_t i = 0; i < size; ++i) {
+            result.data_.get()[i] = (data_.get()[i] > scalar) ? 1.0f : 0.0f;
+        }
     }
 
     return result;
 }
+
+Tensor Tensor::operator>(const Tensor& other) const {
+    // Broadcast shapes if necessary
+    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
+
+    Tensor result(A_broadcasted.shape(), use_gpu_);
+
+    // Calculate the size of the tensor data
+    size_t size = 1;
+    for (int dim : A_broadcasted.shape()) size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_greater_than_tensor(A_broadcasted.data_.get(), B_broadcasted.data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation
+        for (size_t i = 0; i < size; ++i) {
+            result.data_.get()[i] = (A_broadcasted.data_.get()[i] > B_broadcasted.data_.get()[i]) ? 1.0f : 0.0f;
+        }
+    }
+
+    return result;
+}
+
+
+

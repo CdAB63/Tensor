@@ -54,11 +54,8 @@ class Tensor {
         Tensor& operator=(const std::pair<Tensor, float>& masked_assignment);
         static Tensor from_condition(const Tensor& condition);
         Tensor operator>(float scalar) const;
-
-
-    // Element-wise comparison
-    Tensor operator>(const Tensor& other) const;
-    Tensor operator==(const Tensor& other) const;
+        Tensor operator>(const Tensor& other) const;
+        Tensor operator==(const Tensor& other) const;
 
         // Accessors
         float* data() { return data_.get(); }

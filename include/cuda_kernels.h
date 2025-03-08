@@ -22,6 +22,8 @@ void launch_cuda_argmax(const float* input, int* output, int axis, size_t stride
 void launch_cuda_argmin(const float* input, int* output, int axis, size_t stride, size_t axis_size, size_t size);
 void launch_cuda_matmul(const float* A, const float* B, float* C, int m, int n, int p);
 void launch_cuda_transpose(const float* input, float* output, int m, int n);
+void launch_cuda_greater_than_scalar(const float* input, float* output, float scalar, size_t size);
+void launch_cuda_greater_than_tensor(const float* input1, const float* input2, float* output, size_t size);
 #endif
 
 #endif // CUDA_KERNELS_H

@@ -207,3 +207,29 @@ void launch_cuda_matmul(const float* A, const float* B, float* C, int m, int n, 
     cuda_matmul<<<blocks, threads>>>(A, B, C, m, n, p);
 }
 
+__global__ void cuda_greater_than_scalar(const float* input, float* output, float scalar, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        output[idx] = (input[idx] > scalar) ? 1.0f : 0.0f;
+    }
+}
+
+void launch_cuda_greater_than_scalar(const float* input, float* output, float scalar, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_greater_than_scalar<<<blocks, threads>>>(input, output, scalar, size);
+}
+
+__global__ void cuda_greater_than_tensor(const float* input1, const float* input2, float* output, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        output[idx] = (input1[idx] > input2[idx]) ? 1.0f : 0.0f;
+    }
+}
+
+void launch_cuda_greater_than_tensor(const float* input1, const float* input2, float* output, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_greater_than_tensor<<<blocks, threads>>>(input1, input2, output, size);
+}
+
