@@ -40,6 +40,47 @@ void launch_cuda_dot(const float* a, const float* b, float* result, size_t size)
     cuda_dot<<<blocks, threads, threads * sizeof(float)>>>(a, b, result, size);
 }
 
+__global__ void cuda_conv1d(const float* input, const float* kernel, float* output,
+                            int batch_size, int in_channels, int length,
+                            int kernel_size, int out_channels,
+                            int stride, int pad) {
+    int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+    int batch = blockIdx.x;
+    int oc = blockIdx.y;
+    int ol = threadIdx.x;
+
+    if (batch < batch_size && oc < out_channels && ol < output_length) {
+        float sum = 0.0f;
+
+        for (int ks = 0; ks < kernel_size; ++ks) {
+            for (int ic = 0; ic < in_channels; ++ic) {
+                int input_pos = ol * stride + ks - pad;
+
+                if (input_pos >= 0 && input_pos < length) {
+                    float input_val = input[batch * in_channels * length + ic * length + input_pos];
+                    float kernel_val = kernel[ks * in_channels * out_channels + ic * out_channels + oc];
+                    sum += input_val * kernel_val;
+                }
+            }
+        }
+
+        output[batch * out_channels * output_length + oc * output_length + ol] = sum;
+    }
+}
+
+void launch_cuda_conv1d(const float* input, const float* kernel, float* output,
+                        int batch_size, int in_channels, int length,
+                        int kernel_size, int out_channels,
+                        int stride, int pad) {
+    int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+    dim3 blocks(batch_size, out_channels);
+    dim3 threads(output_length);
+
+    cuda_conv1d<<<blocks, threads>>>(input, kernel, output, batch_size, in_channels, length, kernel_size, out_channels, stride, pad);
+}
+
 __global__ void cuda_conv2d(const float* input, const float* kernel, float* output,
                             int x, int y, int z, int a, int b, int k, int stride, int pad) {
     int out_x = (x - a + 2 * pad) / stride + 1;
@@ -80,6 +121,74 @@ void launch_cuda_conv2d(const float* input, const float* kernel, float* output,
     dim3 threads(1, 16, 16);
 
     cuda_conv2d<<<blocks, threads>>>(input, kernel, output, x, y, z, a, b, k, stride, pad);
+}
+
+__global__ void cuda_conv3d(const float* input, const float* kernel, float* output,
+                            int batch_size, int in_channels, int depth, int height, int width,
+                            int kernel_depth, int kernel_height, int kernel_width, int out_channels,
+                            int stride, int pad_depth, int pad_height, int pad_width) {
+    int output_depth = (depth - kernel_depth + 2 * pad_depth) / stride + 1;
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    int batch = blockIdx.x;
+    int oc = blockIdx.y;
+    int od = blockIdx.z;
+    int oh = threadIdx.y;
+    int ow = threadIdx.x;
+
+    if (batch < batch_size && oc < out_channels && od < output_depth && oh < output_height && ow < output_width) {
+        float sum = 0.0f;
+
+        for (int kd = 0; kd < kernel_depth; ++kd) {
+            for (int kh = 0; kh < kernel_height; ++kh) {
+                for (int kw = 0; kw < kernel_width; ++kw) {
+                    for (int ic = 0; ic < in_channels; ++ic) {
+                        int input_d = od * stride + kd - pad_depth;
+                        int input_h = oh * stride + kh - pad_height;
+                        int input_w = ow * stride + kw - pad_width;
+
+                        if (input_d >= 0 && input_d < depth &&
+                            input_h >= 0 && input_h < height &&
+                            input_w >= 0 && input_w < width) {
+                            float input_val = input[batch * in_channels * depth * height * width +
+                                                   ic * depth * height * width +
+                                                   input_d * height * width +
+                                                   input_h * width +
+                                                   input_w];
+                            float kernel_val = kernel[kd * kernel_height * kernel_width * in_channels * out_channels +
+                                                     kh * kernel_width * in_channels * out_channels +
+                                                     kw * in_channels * out_channels +
+                                                     ic * out_channels +
+                                                     oc];
+                            sum += input_val * kernel_val;
+                        }
+                    }
+                }
+            }
+        }
+
+        output[batch * out_channels * output_depth * output_height * output_width +
+               oc * output_depth * output_height * output_width +
+               od * output_height * output_width +
+               oh * output_width +
+               ow] = sum;
+    }
+}
+
+void launch_cuda_conv3d(const float* input, const float* kernel, float* output,
+                        int batch_size, int in_channels, int depth, int height, int width,
+                        int kernel_depth, int kernel_height, int kernel_width, int out_channels,
+                        int stride, int pad_depth, int pad_height, int pad_width) {
+    int output_depth = (depth - kernel_depth + 2 * pad_depth) / stride + 1;
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    dim3 blocks(batch_size, out_channels, output_depth);
+    dim3 threads(output_width, output_height);
+
+    cuda_conv3d<<<blocks, threads>>>(input, kernel, output, batch_size, in_channels, depth, height, width,
+                                     kernel_depth, kernel_height, kernel_width, out_channels, stride, pad_depth, pad_height, pad_width);
 }
 
 __global__ void cuda_power(const float* input, float* output, float exponent, size_t size) {

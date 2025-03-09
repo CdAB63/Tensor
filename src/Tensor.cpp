@@ -87,6 +87,79 @@ float Tensor::dot(const Tensor& other) const {
     return result;
 }
 
+Tensor Tensor::conv1d_cpu(const Tensor& kernel, int stride, bool padding) const {
+    // Input dimensions
+    int batch_size = shape_[0];
+    int in_channels = shape_[1];
+    int length = shape_[2];
+
+    // Kernel dimensions
+    int kernel_size = kernel.shape()[0];
+    int out_channels = kernel.shape()[2];
+
+    // Padding
+    int pad = padding ? (kernel_size - 1) / 2 : 0;
+
+    // Output dimensions
+    int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+    // Create output tensor
+    Tensor output({batch_size, out_channels, output_length}, use_gpu_);
+
+    // Perform convolution
+    for (int batch = 0; batch < batch_size; ++batch) {
+        for (int oc = 0; oc < out_channels; ++oc) {
+            for (int ol = 0; ol < output_length; ++ol) {
+                float sum = 0.0f;
+
+                for (int ks = 0; ks < kernel_size; ++ks) {
+                    for (int ic = 0; ic < in_channels; ++ic) {
+                        int input_pos = ol * stride + ks - pad;
+
+                        if (input_pos >= 0 && input_pos < length) {
+                            float input_val = data_.get()[batch * in_channels * length + ic * length + input_pos];
+                            float kernel_val = kernel.data()[ks * in_channels * out_channels + ic * out_channels + oc];
+                            sum += input_val * kernel_val;
+                        }
+                    }
+                }
+
+                output.data()[batch * out_channels * output_length + oc * output_length + ol] = sum;
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::conv1d(const Tensor& kernel, int stride, bool padding) const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        int batch_size = shape_[0];
+        int in_channels = shape_[1];
+        int length = shape_[2];
+
+        int kernel_size = kernel.shape()[0];
+        int out_channels = kernel.shape()[2];
+
+        int pad = padding ? (kernel_size - 1) / 2 : 0;
+
+        int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+        Tensor output({batch_size, out_channels, output_length}, use_gpu_);
+
+        launch_cuda_conv1d(data_.get(), kernel.data(), output.data(), batch_size, in_channels, length, kernel_size, out_channels, stride, pad);
+
+        return output;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Call the CPU implementation
+        return conv1d_cpu(kernel, stride, padding);
+    }
+}
+
 Tensor Tensor::conv2d_cpu(const Tensor& kernel, int stride, bool padding) const {
     // Input dimensions
     int x = shape_[0];
@@ -135,6 +208,120 @@ Tensor Tensor::conv2d_cpu(const Tensor& kernel, int stride, bool padding) const 
     }
 
     return output;
+}
+
+Tensor Tensor::conv3d_cpu(const Tensor& kernel, int stride, bool padding) const {
+    // Input dimensions
+    int batch_size = shape_[0];
+    int in_channels = shape_[1];
+    int depth = shape_[2];
+    int height = shape_[3];
+    int width = shape_[4];
+
+    // Kernel dimensions
+    int kernel_depth = kernel.shape()[0];
+    int kernel_height = kernel.shape()[1];
+    int kernel_width = kernel.shape()[2];
+    int out_channels = kernel.shape()[4];
+
+    // Padding
+    int pad_depth = padding ? (kernel_depth - 1) / 2 : 0;
+    int pad_height = padding ? (kernel_height - 1) / 2 : 0;
+    int pad_width = padding ? (kernel_width - 1) / 2 : 0;
+
+    // Output dimensions
+    int output_depth = (depth - kernel_depth + 2 * pad_depth) / stride + 1;
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    // Create output tensor
+    Tensor output({batch_size, out_channels, output_depth, output_height, output_width}, use_gpu_);
+
+    // Perform convolution
+    for (int batch = 0; batch < batch_size; ++batch) {
+        for (int oc = 0; oc < out_channels; ++oc) {
+            for (int od = 0; od < output_depth; ++od) {
+                for (int oh = 0; oh < output_height; ++oh) {
+                    for (int ow = 0; ow < output_width; ++ow) {
+                        float sum = 0.0f;
+
+                        for (int kd = 0; kd < kernel_depth; ++kd) {
+                            for (int kh = 0; kh < kernel_height; ++kh) {
+                                for (int kw = 0; kw < kernel_width; ++kw) {
+                                    for (int ic = 0; ic < in_channels; ++ic) {
+                                        int input_d = od * stride + kd - pad_depth;
+                                        int input_h = oh * stride + kh - pad_height;
+                                        int input_w = ow * stride + kw - pad_width;
+
+                                        if (input_d >= 0 && input_d < depth &&
+                                            input_h >= 0 && input_h < height &&
+                                            input_w >= 0 && input_w < width) {
+                                            float input_val = data_.get()[batch * in_channels * depth * height * width +
+                                                                        ic * depth * height * width +
+                                                                        input_d * height * width +
+                                                                        input_h * width +
+                                                                        input_w];
+                                            float kernel_val = kernel.data()[kd * kernel_height * kernel_width * in_channels * out_channels +
+                                                                        kh * kernel_width * in_channels * out_channels +
+                                                                        kw * in_channels * out_channels +
+                                                                        ic * out_channels +
+                                                                        oc];
+                                            sum += input_val * kernel_val;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        output.data()[batch * out_channels * output_depth * output_height * output_width +
+                                    oc * output_depth * output_height * output_width +
+                                    od * output_height * output_width +
+                                    oh * output_width +
+                                    ow] = sum;
+                    }
+                }
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::conv3d(const Tensor& kernel, int stride, bool padding) const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        int batch_size = shape_[0];
+        int in_channels = shape_[1];
+        int depth = shape_[2];
+        int height = shape_[3];
+        int width = shape_[4];
+
+        int kernel_depth = kernel.shape()[0];
+        int kernel_height = kernel.shape()[1];
+        int kernel_width = kernel.shape()[2];
+        int out_channels = kernel.shape()[4];
+
+        int pad_depth = padding ? (kernel_depth - 1) / 2 : 0;
+        int pad_height = padding ? (kernel_height - 1) / 2 : 0;
+        int pad_width = padding ? (kernel_width - 1) / 2 : 0;
+
+        int output_depth = (depth - kernel_depth + 2 * pad_depth) / stride + 1;
+        int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+        int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+        Tensor output({batch_size, out_channels, output_depth, output_height, output_width}, use_gpu_);
+
+        launch_cuda_conv3d(data_.get(), kernel.data(), output.data(), batch_size, in_channels, depth, height, width,
+                          kernel_depth, kernel_height, kernel_width, out_channels, stride, pad_depth, pad_height, pad_width);
+
+        return output;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Call the CPU implementation
+        return conv3d_cpu(kernel, stride, padding);
+    }
 }
 
 Tensor Tensor::conv2d(const Tensor& kernel, int stride, bool padding) const {
@@ -825,21 +1012,6 @@ std::pair<Tensor, Tensor> Tensor::broadcast_tensors(const Tensor& A, const Tenso
 
     return {A_broadcasted, B_broadcasted};
 }
-
-// Element-wise greater-than comparison
-//Tensor Tensor::operator>(const Tensor& other) const {
-//    auto [A_broadcasted, B_broadcasted] = broadcast_tensors(*this, other);
-//
-//    Tensor result(A_broadcasted.shape(), use_gpu_);
-//    size_t size = 1;
-//    for (int dim : A_broadcasted.shape()) size *= dim;
-//
-//    for (size_t i = 0; i < size; ++i) {
-//        result.data()[i] = (A_broadcasted.data()[i] > B_broadcasted.data()[i]) ? 1.0f : 0.0f;
-//    }
-//
-//    return result;
-//}
 
 // Element-wise equality comparison
 Tensor Tensor::operator==(const Tensor& other) const {

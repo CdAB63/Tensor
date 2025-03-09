@@ -20,7 +20,12 @@ class Tensor {
         bool use_gpu() const;
         Tensor add(const Tensor& other, float alpha = 1.0f) const;
         float dot(const Tensor& other) const;
+        Tensor conv1d(const Tensor& kernel, int stride, bool padding) const;
+        Tensor conv1d_cpu(const Tensor& kernel, int stride, bool padding) const;
         Tensor conv2d(const Tensor& kernel, int stride, bool padding) const;
+        Tensor conv2d_cpu(const Tensor& kernel, int stride, bool padding) const;
+        Tensor conv3d(const Tensor& kernel, int stride, bool padding) const;
+        Tensor conv3d_cpu(const Tensor& kernel, int stride, bool padding) const;
         Tensor power(float exponent) const;
         Tensor subtract(const Tensor& other) const;
         Tensor add_scaled(const Tensor& other, float alpha) const;
@@ -70,9 +75,6 @@ class Tensor {
         // Helper functions
         void allocate_memory();
         void free_memory();
-    
-        // CPU implementation of convolution
-        Tensor conv2d_cpu(const Tensor& kernel, int stride, bool padding) const;
 
 	// CPU implementation of power
 	Tensor power_cpu(float exponent) const;

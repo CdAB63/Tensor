@@ -109,21 +109,46 @@ int main() {
     Tensor I = A.power(2.0f);
     print_tensor(I, "I = A^2");
 
+    // Create a 1D input tensor (batch_size=1, in_channels=1, length=5)
+    Tensor input1d({1, 1, 5}, false);
+    for (int i = 0; i < 5; ++i) input1d.data()[i] = static_cast<float>(i + 1);
+    
+    // Create a 1D kernel (kernel_size=3, in_channels=1, out_channels=1)
+    Tensor kernel1d({3, 1, 1}, false);
+    for (int i = 0; i < 3; ++i) kernel1d.data()[i] = static_cast<float>(i + 1);
+    
+    // Perform 1D convolution
+    Tensor output1d = input1d.conv1d(kernel1d, 1, true);
+    print_tensor(output1d, "1D Convolution Output");
+
     // Create an input tensor (5x5 image with 3 channels)
-    Tensor input({5, 5, 3}, false);
+    Tensor input2d({5, 5, 3}, false);
 
     // Create a kernel (3x3 kernel with 3 input channels and 2 filters)
-    Tensor kernel({3, 3, 3, 2}, false);
+    Tensor kernel2d({3, 3, 3, 2}, false);
 
     // Initialize input and kernel with dummy data
-    for (int i = 0; i < 5 * 5 * 3; ++i) input.data()[i] = static_cast<float>(i) / 10.0f;
-    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel.data()[i] = static_cast<float>(i) / 10.0f;
+    for (int i = 0; i < 5 * 5 * 3; ++i) input2d.data()[i] = static_cast<float>(i) / 10.0f;
+    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel2d.data()[i] = static_cast<float>(i) / 10.0f;
 
     // Perform convolution with stride 1 and padding
-    Tensor output = input.conv2d(kernel, 1, true);
+    Tensor output2d = input2d.conv2d(kernel2d, 1, true);
 
     // Print output shape
-    std::cout << "Convolution output shape: " << output.shape()[0] << "x" << output.shape()[1] << "x" << output.shape()[2] << "\n\n";
+    std::cout << "Convolution output shape: " << output2d.shape()[0] << "x" << output2d.shape()[1] << "x" << output2d.shape()[2] << "\n\n";
+    print_tensor(output2d, "2D Convolution Output");
+
+    // Create a 3D input tensor (batch_size=1, in_channels=1, depth=3, height=3, width=3)
+    Tensor input3d({1, 1, 3, 3, 3}, false);
+    for (int i = 0; i < 27; ++i) input3d.data()[i] = static_cast<float>(i + 1);
+
+    // Create a 3D kernel (kernel_depth=2, kernel_height=2, kernel_width=2, in_channels=1, out_channels=1)
+    Tensor kernel3d({2, 2, 2, 1, 1}, false);
+    for (int i = 0; i < 8; ++i) kernel3d.data()[i] = static_cast<float>(i + 1);
+
+    // Perform 3D convolution
+    Tensor output3d = input3d.conv3d(kernel3d, 1, true);
+    print_tensor(output3d, "3D Convolution Output");
 
     // Create a tensor (2x2x2)
     Tensor input1({2, 2, 2}, false);
