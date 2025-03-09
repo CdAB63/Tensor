@@ -1186,3 +1186,207 @@ Tensor Tensor::operator>(const Tensor& other) const {
 
 
 
+Tensor Tensor::maxpool(int kernel_size, int stride, bool padding) const {
+    if (shape_.size() != 3) {
+        throw std::runtime_error("Max pooling is only supported for 3D tensors (batch_size, channels, length)");
+    }
+
+    int batch_size = shape_[0];
+    int channels = shape_[1];
+    int length = shape_[2];
+
+    int pad = padding ? (kernel_size - 1) / 2 : 0;
+
+    int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+    Tensor output({batch_size, channels, output_length}, use_gpu_);
+
+    for (int batch = 0; batch < batch_size; ++batch) {
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int ol = 0; ol < output_length; ++ol) {
+                float max_val = -std::numeric_limits<float>::max();
+
+                for (int ks = 0; ks < kernel_size; ++ks) {
+                    int input_pos = ol * stride + ks - pad;
+
+                    if (input_pos >= 0 && input_pos < length) {
+                        float val = data_.get()[batch * channels * length + ch * length + input_pos];
+                        if (val > max_val) {
+                            max_val = val;
+                        }
+                    }
+                }
+
+                output.data()[batch * channels * output_length + ch * output_length + ol] = max_val;
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::avgpool(int kernel_size, int stride, bool padding) const {
+    if (shape_.size() != 3) {
+        throw std::runtime_error("Average pooling is only supported for 3D tensors (batch_size, channels, length)");
+    }
+
+    int batch_size = shape_[0];
+    int channels = shape_[1];
+    int length = shape_[2];
+
+    int pad = padding ? (kernel_size - 1) / 2 : 0;
+
+    int output_length = (length - kernel_size + 2 * pad) / stride + 1;
+
+    Tensor output({batch_size, channels, output_length}, use_gpu_);
+
+    for (int batch = 0; batch < batch_size; ++batch) {
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int ol = 0; ol < output_length; ++ol) {
+                float sum = 0.0f;
+                int count = 0;
+
+                for (int ks = 0; ks < kernel_size; ++ks) {
+                    int input_pos = ol * stride + ks - pad;
+
+                    if (input_pos >= 0 && input_pos < length) {
+                        float val = data_.get()[batch * channels * length + ch * length + input_pos];
+                        sum += val;
+                        count++;
+                    }
+                }
+
+                output.data()[batch * channels * output_length + ch * output_length + ol] = sum / count;
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::maxpool2d(int kernel_height, int kernel_width, int stride = 1, bool padding = false) const {
+    if (shape_.size() != 4) {
+        throw std::runtime_error("2D max pooling is only supported for 4D tensors (batch_size, channels, height, width)");
+    }
+
+    int batch_size = shape_[0];
+    int channels = shape_[1];
+    int height = shape_[2];
+    int width = shape_[3];
+
+    int pad_height = padding ? (kernel_height - 1) / 2 : 0;
+    int pad_width = padding ? (kernel_width - 1) / 2 : 0;
+
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    Tensor output({batch_size, channels, output_height, output_width}, use_gpu_);
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_maxpool2d(data_.get(), output.data_.get(), batch_size, channels, height, width,
+                              kernel_height, kernel_width, stride, pad_height, pad_width);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation
+        for (int batch = 0; batch < batch_size; ++batch) {
+            for (int ch = 0; ch < channels; ++ch) {
+                for (int oh = 0; oh < output_height; ++oh) {
+                    for (int ow = 0; ow < output_width; ++ow) {
+                        float max_val = -std::numeric_limits<float>::max();
+
+                        for (int kh = 0; kh < kernel_height; ++kh) {
+                            for (int kw = 0; kw < kernel_width; ++kw) {
+                                int input_h = oh * stride + kh - pad_height;
+                                int input_w = ow * stride + kw - pad_width;
+
+                                if (input_h >= 0 && input_h < height && input_w >= 0 && input_w < width) {
+                                    float val = data_.get()[batch * channels * height * width +
+                                                            ch * height * width +
+                                                            input_h * width +
+                                                            input_w];
+                                    if (val > max_val) {
+                                        max_val = val;
+                                    }
+                                }
+                            }
+                        }
+
+                        output.data()[batch * channels * output_height * output_width +
+                                     ch * output_height * output_width +
+                                     oh * output_width +
+                                     ow] = max_val;
+                    }
+                }
+            }
+        }
+    }
+
+    return output;
+}
+
+Tensor Tensor::avgpool2d(int kernel_height, int kernel_width, int stride = 1, bool padding = false) const {
+    if (shape_.size() != 4) {
+        throw std::runtime_error("2D average pooling is only supported for 4D tensors (batch_size, channels, height, width)");
+    }
+
+    int batch_size = shape_[0];
+    int channels = shape_[1];
+    int height = shape_[2];
+    int width = shape_[3];
+
+    int pad_height = padding ? (kernel_height - 1) / 2 : 0;
+    int pad_width = padding ? (kernel_width - 1) / 2 : 0;
+
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    Tensor output({batch_size, channels, output_height, output_width}, use_gpu_);
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_avgpool2d(data_.get(), output.data_.get(), batch_size, channels, height, width,
+                              kernel_height, kernel_width, stride, pad_height, pad_width);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation
+        for (int batch = 0; batch < batch_size; ++batch) {
+            for (int ch = 0; ch < channels; ++ch) {
+                for (int oh = 0; oh < output_height; ++oh) {
+                    for (int ow = 0; ow < output_width; ++ow) {
+                        float sum = 0.0f;
+                        int count = 0;
+
+                        for (int kh = 0; kh < kernel_height; ++kh) {
+                            for (int kw = 0; kw < kernel_width; ++kw) {
+                                int input_h = oh * stride + kh - pad_height;
+                                int input_w = ow * stride + kw - pad_width;
+
+                                if (input_h >= 0 && input_h < height && input_w >= 0 && input_w < width) {
+                                    float val = data_.get()[batch * channels * height * width +
+                                                            ch * height * width +
+                                                            input_h * width +
+                                                            input_w];
+                                    sum += val;
+                                    count++;
+                                }
+                            }
+                        }
+
+                        output.data()[batch * channels * output_height * output_width +
+                                     ch * output_height * output_width +
+                                     oh * output_width +
+                                     ow] = sum / count;
+                    }
+                }
+            }
+        }
+    }
+
+    return output;
+}
+

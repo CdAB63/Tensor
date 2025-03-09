@@ -342,3 +342,107 @@ void launch_cuda_greater_than_tensor(const float* input1, const float* input2, f
     cuda_greater_than_tensor<<<blocks, threads>>>(input1, input2, output, size);
 }
 
+__global__ void cuda_maxpool2d(const float* input, float* output,
+                               int batch_size, int channels, int height, int width,
+                               int kernel_height, int kernel_width,
+                               int stride, int pad_height, int pad_width,
+                               int output_height, int output_width) {
+    int batch = blockIdx.x;
+    int ch = blockIdx.y;
+    int oh = blockIdx.z * blockDim.y + threadIdx.y;
+    int ow = threadIdx.x;
+
+    if (batch < batch_size && ch < channels && oh < output_height && ow < output_width) {
+        float max_val = -FLT_MAX;
+
+        for (int kh = 0; kh < kernel_height; ++kh) {
+            for (int kw = 0; kw < kernel_width; ++kw) {
+                int input_h = oh * stride + kh - pad_height;
+                int input_w = ow * stride + kw - pad_width;
+
+                if (input_h >= 0 && input_h < height && input_w >= 0 && input_w < width) {
+                    float val = input[batch * channels * height * width +
+                                    ch * height * width +
+                                    input_h * width +
+                                    input_w];
+                    if (val > max_val) {
+                        max_val = val;
+                    }
+                }
+            }
+        }
+
+        output[batch * channels * output_height * output_width +
+               ch * output_height * output_width +
+               oh * output_width +
+               ow] = max_val;
+    }
+}
+
+void launch_cuda_maxpool2d(const float* input, float* output,
+                           int batch_size, int channels, int height, int width,
+                           int kernel_height, int kernel_width,
+                           int stride, int pad_height, int pad_width) {
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    dim3 blocks(batch_size, channels, (output_height + 15) / 16);
+    dim3 threads(output_width, 16);
+
+    cuda_maxpool2d<<<blocks, threads>>>(input, output, batch_size, channels, height, width,
+                                        kernel_height, kernel_width, stride, pad_height, pad_width,
+                                        output_height, output_width);
+}
+
+__global__ void cuda_avgpool2d(const float* input, float* output,
+                               int batch_size, int channels, int height, int width,
+                               int kernel_height, int kernel_width,
+                               int stride, int pad_height, int pad_width,
+                               int output_height, int output_width) {
+    int batch = blockIdx.x;
+    int ch = blockIdx.y;
+    int oh = blockIdx.z * blockDim.y + threadIdx.y;
+    int ow = threadIdx.x;
+
+    if (batch < batch_size && ch < channels && oh < output_height && ow < output_width) {
+        float sum = 0.0f;
+        int count = 0;
+
+        for (int kh = 0; kh < kernel_height; ++kh) {
+            for (int kw = 0; kw < kernel_width; ++kw) {
+                int input_h = oh * stride + kh - pad_height;
+                int input_w = ow * stride + kw - pad_width;
+
+                if (input_h >= 0 && input_h < height && input_w >= 0 && input_w < width) {
+                    float val = input[batch * channels * height * width +
+                                      ch * height * width +
+                                      input_h * width +
+                                      input_w];
+                    sum += val;
+                    count++;
+                }
+            }
+        }
+
+        output[batch * channels * output_height * output_width +
+               ch * output_height * output_width +
+               oh * output_width +
+               ow] = sum / count;
+    }
+}
+
+void launch_cuda_avgpool2d(const float* input, float* output,
+                           int batch_size, int channels, int height, int width,
+                           int kernel_height, int kernel_width,
+                           int stride, int pad_height, int pad_width) {
+    int output_height = (height - kernel_height + 2 * pad_height) / stride + 1;
+    int output_width = (width - kernel_width + 2 * pad_width) / stride + 1;
+
+    dim3 blocks(batch_size, channels, (output_height + 15) / 16);
+    dim3 threads(output_width, 16);
+
+    cuda_avgpool2d<<<blocks, threads>>>(input, output, batch_size, channels, height, width,
+                                        kernel_height, kernel_width, stride, pad_height, pad_width,
+                                        output_height, output_width);
+}
+

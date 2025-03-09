@@ -61,6 +61,10 @@ class Tensor {
         Tensor operator>(float scalar) const;
         Tensor operator>(const Tensor& other) const;
         Tensor operator==(const Tensor& other) const;
+        Tensor maxpool(int kernel_size, int stride, bool padding) const;
+        Tensor avgpool(int kernel_size, int stride, bool padding) const;
+        Tensor maxpool2d(int kernel_height, int kernel_width, int stride, bool padding) const;
+        Tensor avgpool2d(int kernel_height, int kernel_width, int stride, bool padding) const;
 
         // Accessors
         float* data() { return data_.get(); }

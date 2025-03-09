@@ -2,6 +2,7 @@
 #define CUDA_KERNELS_H
 
 #include <cstddef> // for size_t
+#include <cfloat> // for FLOATMAX
 
 #ifdef USE_CUDA
 void launch_cuda_add(const float* a, const float* b, float alpha, float* result, size_t size);
@@ -32,6 +33,15 @@ void launch_cuda_matmul(const float* A, const float* B, float* C, int m, int n, 
 void launch_cuda_transpose(const float* input, float* output, int m, int n);
 void launch_cuda_greater_than_scalar(const float* input, float* output, float scalar, size_t size);
 void launch_cuda_greater_than_tensor(const float* input1, const float* input2, float* output, size_t size);
+void launch_cuda_maxpool2d(const float* input, float* output,
+                           int batch_size, int channels, int height, int width,
+                           int kernel_height, int kernel_width,
+                           int stride, int pad_height, int pad_width);
+
+void launch_cuda_avgpool2d(const float* input, float* output,
+                           int batch_size, int channels, int height, int width,
+                           int kernel_height, int kernel_width,
+                           int stride, int pad_height, int pad_width);
 #endif
 
 #endif // CUDA_KERNELS_H

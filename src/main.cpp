@@ -338,5 +338,38 @@ int main() {
     Tensor mask2 = A6 > B6;
     print_tensor(mask2, "Mask (A > B)");
 
+    // Create a 3D input tensor (batch_size=1, channels=1, length=6)
+    Tensor inputmp({1, 1, 6}, false);
+    for (int i = 0; i < 6; ++i) inputmp.data()[i] = static_cast<float>(i + 1);
+    
+    // Print original tensor
+    print_tensor(inputmp, "Original Tensor");
+    
+    // Test max pooling
+    Tensor max_pooled = inputmp.maxpool(2, 2, false);
+    print_tensor(max_pooled, "Max Pooled Tensor");
+    
+    // Test average pooling
+    Tensor avg_pooled = inputmp.avgpool(2, 2, false);
+    print_tensor(avg_pooled, "Average Pooled Tensor");
+
+    // With GPU
+    std::cout << "Starting Unitary tests for max and avg pool using GPU" << "\n";
+
+    // Create a 4D input tensor (batch_size=1, channels=1, height=4, width=4)
+    Tensor inputmpgpu({1, 1, 4, 4}, false); // Use GPU
+    for (int i = 0; i < 16; ++i) inputmpgpu.data()[i] = static_cast<float>(i + 1);
+    std::cout << "4D Tensor created\n";
+
+    // Print original tensor
+    print_tensor(inputmpgpu, "Original Tensor");
+
+    // Test max pooling
+    Tensor max_pooledgpu = inputmpgpu.maxpool2d(2, 2, 2, false);
+    print_tensor(max_pooledgpu, "Max Pooled Tensor");
+
+    // Test average pooling
+    Tensor avg_pooledgpu = inputmpgpu.avgpool2d(2, 2, 2, false);
+    print_tensor(avg_pooledgpu, "Average Pooled Tensor");
     return 0;
 }
