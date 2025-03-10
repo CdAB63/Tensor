@@ -1,4 +1,5 @@
 #include "cuda_kernels.h"
+#include <stdio.h>
 
 __global__ void cuda_add(const float* a, const float* b, float alpha, float* result, size_t size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -211,6 +212,12 @@ __global__ void cuda_subtract(const float* a, const float* b, float* result, siz
     }
 }
 
+void launch_cuda_subtract(const float* a, const float* b, float* result, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_subtract<<<blocks, threads>>>(a, b, result, size);
+}
+
 __global__ void cuda_add_scaled(const float* a, const float* b, float alpha, float* result, size_t size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -218,11 +225,23 @@ __global__ void cuda_add_scaled(const float* a, const float* b, float alpha, flo
     }
 }
 
+void launch_cuda_add_scaled(const float* a, const float* b, float alpha, float* result, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_add_scaled<<<blocks, threads>>>(a, b, alpha, result, size);
+}
+
 __global__ void cuda_multiply(const float* a, const float* b, float* result, size_t size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
         result[idx] = a[idx] * b[idx];
     }
+}
+
+void launch_cuda_multiply(const float* a, const float* b, float* result, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_multiply<<<blocks, threads>>>(a, b, result, size);
 }
 
 __global__ void cuda_divide(const float* a, const float* b, float* result, size_t size) {
@@ -233,35 +252,17 @@ __global__ void cuda_divide(const float* a, const float* b, float* result, size_
     }
 }
 
+void launch_cuda_divide(const float* a, const float* b, float* result, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_divide<<<blocks, threads>>>(a, b, result, size);
+}
+
 __global__ void cuda_multiply_scalar(const float* a, float scalar, float* result, size_t size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
         result[idx] = a[idx] * scalar;
     }
-}
-
-void launch_cuda_subtract(const float* a, const float* b, float* result, size_t size) {
-    int threads = 256;
-    int blocks = (size + threads - 1) / threads;
-    cuda_subtract<<<blocks, threads>>>(a, b, result, size);
-}
-
-void launch_cuda_add_scaled(const float* a, const float* b, float alpha, float* result, size_t size) {
-    int threads = 256;
-    int blocks = (size + threads - 1) / threads;
-    cuda_add_scaled<<<blocks, threads>>>(a, b, alpha, result, size);
-}
-
-void launch_cuda_multiply(const float* a, const float* b, float* result, size_t size) {
-    int threads = 256;
-    int blocks = (size + threads - 1) / threads;
-    cuda_multiply<<<blocks, threads>>>(a, b, result, size);
-}
-
-void launch_cuda_divide(const float* a, const float* b, float* result, size_t size) {
-    int threads = 256;
-    int blocks = (size + threads - 1) / threads;
-    cuda_divide<<<blocks, threads>>>(a, b, result, size);
 }
 
 void launch_cuda_multiply_scalar(const float* a, float scalar, float* result, size_t size) {

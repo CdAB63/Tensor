@@ -13,6 +13,46 @@ Tensor::~Tensor() {
     free_memory();
 }
 
+void Tensor::load_data(const std::vector<float>& data) {
+    if (data.size() != this->size()) {
+        throw std::runtime_error("Data size does not match tensor size");
+    }
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        cudaError_t err = cudaMemcpy(data_.get(), data.data(), data.size() * sizeof(float), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) {
+            throw std::runtime_error("Failed to load data to GPU: " + std::string(cudaGetErrorString(err)));
+        }
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        std::copy(data.begin(), data.end(), data_.get());
+    }
+}
+
+std::vector<float> Tensor::get_data() const {
+    std::vector<float> result(this->size());
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Copy data from GPU to host
+        cudaError_t err = cudaMemcpy(result.data(), data_.get(), result.size() * sizeof(float), cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) {
+            throw std::runtime_error("Failed to get data from GPU: " + std::string(cudaGetErrorString(err)));
+        }
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Copy data from CPU
+        std::copy(data_.get(), data_.get() + result.size(), result.begin());
+    }
+
+    return result;
+}
+
 void Tensor::allocate_memory() {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
@@ -20,8 +60,13 @@ void Tensor::allocate_memory() {
     if (use_gpu_) {
 #ifdef USE_CUDA
         float* gpu_data;
-        cudaMalloc(&gpu_data, size * sizeof(float));
+        cudaError_t err = cudaMalloc(&gpu_data, size * sizeof(float));
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA memory allocation failed: " << cudaGetErrorString(err) << std::endl;
+            throw std::runtime_error("CUDA memory allocation failed");
+        }
         data_ = std::shared_ptr<float>(gpu_data, [](float* ptr) { cudaFree(ptr); });
+        std::cout << "CUDA memory allocated successfully for tensor of size " << size << std::endl;
 #else
         throw std::runtime_error("CUDA not available");
 #endif
@@ -386,14 +431,24 @@ Tensor Tensor::power(float exponent) const {
 }
 
 Tensor Tensor::subtract(const Tensor& other) const {
-    if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
+    if (shape_ != other.shape_) {
+        throw std::runtime_error("Shape mismatch in subtraction");
+    }
 
     Tensor result(shape_, use_gpu_);
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = data_.get()[i] - other.data_.get()[i];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_subtract(data_.get(), other.data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data()[i] = data_.get()[i] - other.data_.get()[i];
+        }
     }
 
     return result;

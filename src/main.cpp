@@ -9,39 +9,12 @@ void print_tensor(const Tensor& tensor, const std::string& name) {
     }
     std::cout << "\n";
 
-    const float* data = tensor.data();
-    int size = 1;
-    for (int dim : tensor.shape()) size *= dim;
-
+    std::vector<float> data = tensor.get_data();
     std::cout << "Data: ";
-    for (int i = 0; i < size; ++i) {
-        std::cout << data[i] << " ";
+    for (float val : data) {
+        std::cout << val << " ";
     }
     std::cout << "\n\n";
-}
-
-Tensor matrix_multiplication(const Tensor& A, const Tensor& B) {
-    if (A.shape().size() != 2 || B.shape().size() != 2 || A.shape()[1] != B.shape()[0]) {
-        throw std::runtime_error("Invalid shapes for matrix multiplication");
-    }
-
-    int m = A.shape()[0];
-    int n = A.shape()[1];
-    int p = B.shape()[1];
-
-    Tensor result({m, p}, A.use_gpu());
-
-    for (int i = 0; i < m; ++i) {
-        for (int k = 0; k < p; ++k) {
-            float sum = 0.0f;
-            for (int j = 0; j < n; ++j) {
-                sum += A.data()[i * n + j] * B.data()[j * p + k];
-            }
-            result.data()[i * p + k] = sum;
-        }
-    }
-
-    return result;
 }
 
 Tensor dot_product(const Tensor& A, const Tensor& B) {
@@ -54,32 +27,78 @@ Tensor dot_product(const Tensor& A, const Tensor& B) {
 
     float sum = 0.0f;
     for (int i = 0; i < n; ++i) {
-        sum += A.data()[i] * B.data()[i];
+        sum += A.get_data()[i] * B.get_data()[i];
     }
-    result.data()[0] = sum;
+    result.load_data({sum});
 
     return result;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Determine if we should use GPU or CPU
+    bool use_gpu = false; // Default to CPU
+    if (argc > 1) {
+        std::string mode(argv[1]);
+        if (mode == "GPU" || mode == "gpu") {
+            use_gpu = true;
+            std::cout << "Using GPU mode\n";
+        } else if (mode == "CPU" || mode == "cpu") {
+            use_gpu = false;
+            std::cout << "Using CPU mode\n";
+        } else {
+            std::cerr << "Invalid argument. Use 'CPU' or 'GPU'.\n";
+            return 1;
+        }
+    } else {
+        std::cout << "No argument provided. Defaulting to CPU mode.\n";
+    }
+
     // Create two tensors (2x2)
-    Tensor A({2, 2}, false); // CPU tensor
-    Tensor B({2, 2}, false); // CPU tensor
+    std::cout << "Creating tensors A and B\n";
+    try {
+        Tensor A({2, 2}, use_gpu); // Use GPU or CPU based on mode
+        Tensor B({2, 2}, use_gpu); // Use GPU or CPU based on mode
+        std::cout << "Tensors A and B created successfully\n";
 
-    // Initialize A and B with dummy data
-    A.data()[0] = 1.0f; A.data()[1] = 2.0f;
-    A.data()[2] = 3.0f; A.data()[3] = 4.0f;
+        // Load data into tensors
+        std::cout << "Loading data into tensor A\n";
+        A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
 
-    B.data()[0] = 5.0f; B.data()[1] = 6.0f;
-    B.data()[2] = 7.0f; B.data()[3] = 8.0f;
+        std::cout << "Loading data into tensor B\n";
+        B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
+
+        // Perform operations on tensors
+        Tensor C = A.add(B, 1.0f);
+        std::cout << "Addition successful\n";
+
+        // Retrieve data from tensor C
+        std::vector<float> result = C.get_data();
+        std::cout << "Result tensor C (A + B): ";
+        for (float val : result) {
+            std::cout << val << " ";
+        }
+        std::cout << "\n";
+
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return 1;
+    }
+
+    std::cout << "Creating tensors A and B\n";
+    Tensor A({2, 2}, use_gpu); // Use GPU or CPU based on mode
+    Tensor B({2, 2}, use_gpu); // Use GPU or CPU based on mode
+    std::cout << "Tensors A and B created\n";
+
+    // Load data into tensors
+    std::cout << "Loading data into tensor A\n";
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
+
+    std::cout << "Loading data into tensor B\n";
+    B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
 
     // Print initial tensors
     print_tensor(A, "Tensor A");
     print_tensor(B, "Tensor B");
-
-    // Test addition: C = A + B
-    Tensor C = A.add(B, 1.0f);
-    print_tensor(C, "C = A + B");
 
     // Test dot product
     float dot_result = A.dot(B);
@@ -110,26 +129,28 @@ int main() {
     print_tensor(I, "I = A^2");
 
     // Create a 1D input tensor (batch_size=1, in_channels=1, length=5)
-    Tensor input1d({1, 1, 5}, false);
-    for (int i = 0; i < 5; ++i) input1d.data()[i] = static_cast<float>(i + 1);
-    
+    Tensor input1d({1, 1, 5}, use_gpu);
+    input1d.load_data({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+
     // Create a 1D kernel (kernel_size=3, in_channels=1, out_channels=1)
-    Tensor kernel1d({3, 1, 1}, false);
-    for (int i = 0; i < 3; ++i) kernel1d.data()[i] = static_cast<float>(i + 1);
-    
+    Tensor kernel1d({3, 1, 1}, use_gpu);
+    kernel1d.load_data({1.0f, 2.0f, 3.0f});
+
     // Perform 1D convolution
     Tensor output1d = input1d.conv1d(kernel1d, 1, true);
     print_tensor(output1d, "1D Convolution Output");
 
     // Create an input tensor (5x5 image with 3 channels)
-    Tensor input2d({5, 5, 3}, false);
+    Tensor input2d({5, 5, 3}, use_gpu);
+    std::vector<float> input2d_data(5 * 5 * 3);
+    for (int i = 0; i < 5 * 5 * 3; ++i) input2d_data[i] = static_cast<float>(i) / 10.0f;
+    input2d.load_data(input2d_data);
 
     // Create a kernel (3x3 kernel with 3 input channels and 2 filters)
-    Tensor kernel2d({3, 3, 3, 2}, false);
-
-    // Initialize input and kernel with dummy data
-    for (int i = 0; i < 5 * 5 * 3; ++i) input2d.data()[i] = static_cast<float>(i) / 10.0f;
-    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel2d.data()[i] = static_cast<float>(i) / 10.0f;
+    Tensor kernel2d({3, 3, 3, 2}, use_gpu);
+    std::vector<float> kernel2d_data(3 * 3 * 3 * 2);
+    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel2d_data[i] = static_cast<float>(i) / 10.0f;
+    kernel2d.load_data(kernel2d_data);
 
     // Perform convolution with stride 1 and padding
     Tensor output2d = input2d.conv2d(kernel2d, 1, true);
@@ -139,40 +160,43 @@ int main() {
     print_tensor(output2d, "2D Convolution Output");
 
     // Create a 3D input tensor (batch_size=1, in_channels=1, depth=3, height=3, width=3)
-    Tensor input3d({1, 1, 3, 3, 3}, false);
-    for (int i = 0; i < 27; ++i) input3d.data()[i] = static_cast<float>(i + 1);
+    Tensor input3d({1, 1, 3, 3, 3}, use_gpu);
+    std::vector<float> input3d_data(27);
+    for (int i = 0; i < 27; ++i) input3d_data[i] = static_cast<float>(i + 1);
+    input3d.load_data(input3d_data);
 
     // Create a 3D kernel (kernel_depth=2, kernel_height=2, kernel_width=2, in_channels=1, out_channels=1)
-    Tensor kernel3d({2, 2, 2, 1, 1}, false);
-    for (int i = 0; i < 8; ++i) kernel3d.data()[i] = static_cast<float>(i + 1);
+    Tensor kernel3d({2, 2, 2, 1, 1}, use_gpu);
+    std::vector<float> kernel3d_data(8);
+    for (int i = 0; i < 8; ++i) kernel3d_data[i] = static_cast<float>(i + 1);
+    kernel3d.load_data(kernel3d_data);
 
     // Perform 3D convolution
     Tensor output3d = input3d.conv3d(kernel3d, 1, true);
     print_tensor(output3d, "3D Convolution Output");
 
     // Create a tensor (2x2x2)
-    Tensor input1({2, 2, 2}, false);
-
-    // Initialize input with dummy data
-    for (int i = 0; i < 8; ++i) input1.data()[i] = static_cast<float>(i + 1);
+    Tensor input1({2, 2, 2}, use_gpu);
+    std::vector<float> input1_data(8);
+    for (int i = 0; i < 8; ++i) input1_data[i] = static_cast<float>(i + 1);
+    input1.load_data(input1_data);
 
     // Perform power operation
     Tensor result = input1.power(2.0f);
 
     // Print result
     std::cout << "Power operation result (2x2x2 tensor):\n";
-    for (int i = 0; i < 8; ++i) {
-        std::cout << result.data()[i] << " ";
+    std::vector<float> result_data = result.get_data();
+    for (float val : result_data) {
+        std::cout << val << " ";
     }
     std::cout << "\n";
 
     // Create a tensor (2x3x4)
-    Tensor A1({2, 3, 4}, false);
-
-    // Initialize A with dummy data
-    for (int i = 0; i < 2 * 3 * 4; ++i) {
-        A1.data()[i] = static_cast<float>(i);
-    }
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
 
     // Test sum along axis 1
     Tensor sum_result = A1.sum(1);
@@ -198,10 +222,8 @@ int main() {
     Tensor argmin_result = A1.argmin(1);
     print_tensor(argmin_result, "Argmin along axis 1");
 
-    Tensor A2({2, 2}, false);
-
-    A2.data()[0] = 4.0f; A2.data()[1] = 1.0f;
-    A2.data()[2] = 2.0f; A2.data()[3] = 3.0f;
+    Tensor A2({2, 2}, use_gpu);
+    A2.load_data({4.0f, 1.0f, 2.0f, 3.0f});
 
     Tensor B1 = A2.matmul(A2);
     print_tensor(B1, "A2 * A2");
@@ -219,35 +241,26 @@ int main() {
     std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
     print_tensor(eigenvector, "Dominant eigenvector");
 
-    // Matrix multiplication
-    Tensor A3({2, 3}, false); // 2x3 matrix
-    Tensor B3({3, 4}, false); // 3x4 matrix
-
-    // Initialize A and B with dummy data
-    for (int i = 0; i < 6; ++i) A3.data()[i] = static_cast<float>(i + 1);
-    for (int i = 0; i < 12; ++i) B3.data()[i] = static_cast<float>(i + 1);
-
-    // Perform matrix multiplication using einsum
-    Tensor C3 = A3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(matrix_multiplication), B3);
-    print_tensor(C3, "Matrix multiplication using einsum");
-
     // Dot product
-    Tensor D3({3}, false); // 3-element vector
-    Tensor E3({3}, false); // 3-element vector
+    Tensor D3({3}, use_gpu); // 3-element vector
+    std::vector<float> D3_data(3);
+    for (int i = 0; i < 3; ++i) D3_data[i] = static_cast<float>(i + 1);
+    D3.load_data(D3_data);
 
-    // Initialize D and E with dummy data
-    for (int i = 0; i < 3; ++i) {
-        D3.data()[i] = static_cast<float>(i + 1);
-        E3.data()[i] = static_cast<float>(i + 1);
-    }
+    Tensor E3({3}, use_gpu); // 3-element vector
+    std::vector<float> E3_data(3);
+    for (int i = 0; i < 3; ++i) E3_data[i] = static_cast<float>(i + 1);
+    E3.load_data(E3_data);
 
     // Perform dot product using einsum
     Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
     print_tensor(F3, "Dot product using einsum");
 
     // Create a 2x3 tensor
-    Tensor A4({2, 3}, false); // CPU tensor
-    for (int i = 0; i < 6; ++i) A4.data()[i] = static_cast<float>(i + 1);
+    Tensor A4({2, 3}, use_gpu); // Use GPU or CPU based on mode
+    std::vector<float> A4_data(6);
+    for (int i = 0; i < 6; ++i) A4_data[i] = static_cast<float>(i + 1);
+    A4.load_data(A4_data);
     print_tensor(A4, "Original Tensor A");
 
     // Test reshape
@@ -267,8 +280,10 @@ int main() {
     print_tensor(squeezed, "Squeezed Tensor (should match original A)");
 
     // Create another 2x3 tensor
-    Tensor B4({2, 3}, false); // CPU tensor
-    for (int i = 0; i < 6; ++i) B4.data()[i] = static_cast<float>(i + 7);
+    Tensor B4({2, 3}, use_gpu); // Use GPU or CPU based on mode
+    std::vector<float> B4_data(6);
+    for (int i = 0; i < 6; ++i) B4_data[i] = static_cast<float>(i + 7);
+    B4.load_data(B4_data);
     print_tensor(B4, "Tensor B");
 
     // Test concat
@@ -284,8 +299,10 @@ int main() {
     print_tensor(permuted, "Permuted Tensor A (swapped dimensions)");
 
     // Additional tests for edge cases
-    Tensor C4({1, 3, 1, 2}, false); // Tensor with singleton dimensions
-    for (int i = 0; i < 6; ++i) C4.data()[i] = static_cast<float>(i + 1);
+    Tensor C4({1, 3, 1, 2}, use_gpu); // Tensor with singleton dimensions
+    std::vector<float> C4_data(6);
+    for (int i = 0; i < 6; ++i) C4_data[i] = static_cast<float>(i + 1);
+    C4.load_data(C4_data);
     print_tensor(C4, "Tensor C (1x3x1x2)");
 
     // Test squeeze on tensor with singleton dimensions
@@ -297,32 +314,38 @@ int main() {
     print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
 
     // Create tensors
-    Tensor A5({2, 3}, false); // 2x3 tensor
-    Tensor B5({3}, false);    // 3-element vector
-    
+    Tensor A5({2, 3}, use_gpu); // 2x3 tensor
+    Tensor B5({3}, use_gpu);    // 3-element vector
+
     // Initialize tensors
-    for (int i = 0; i < 6; ++i) A5.data()[i] = static_cast<float>(i + 1);
-    for (int i = 0; i < 3; ++i) B5.data()[i] = static_cast<float>(i + 1);
-    
+    std::vector<float> A5_data(6);
+    std::vector<float> B5_data(3);
+    for (int i = 0; i < 6; ++i) A5_data[i] = static_cast<float>(i + 7);
+    for (int i = 0; i < 3; ++i) B5_data[i] = static_cast<float>(i);
+    A5.load_data(A5_data);
+    B5.load_data(B5_data);
+
     // Print tensors
     print_tensor(A5, "Tensor A");
     print_tensor(B5, "Tensor B");
-    
+
     // Test broadcasting
     auto [A_broadcasted, B_broadcasted] = Tensor::broadcast_tensors(A5, B5);
     print_tensor(A_broadcasted, "Broadcasted Tensor A");
     print_tensor(B_broadcasted, "Broadcasted Tensor B");
-    
+
     // Test element-wise comparison
     Tensor greater = A5 > B5;
     print_tensor(greater, "A > B");
-    
+
     Tensor equal = A4 == B4;
     print_tensor(equal, "A == B");
 
     // Create a tensor
-    Tensor A6({2, 3}, false); // 2x3 tensor
-    for (int i = 0; i < 6; ++i) A6.data()[i] = static_cast<float>(i + 1);
+    Tensor A6({2, 3}, use_gpu); // 2x3 tensor
+    std::vector<float> A6_data(6);
+    for (int i = 0; i < 6; ++i) A6_data[i] = static_cast<float>(i + 1);
+    A6.load_data(A6_data);
 
     // Print original tensor
     print_tensor(A6, "Original Tensor A");
@@ -332,44 +355,30 @@ int main() {
     print_tensor(mask, "Mask (A > 3)");
 
     // Compare with another tensor (broadcasting)
-    Tensor B6({3}, false); // 3-element vector
-    for (int i = 0; i < 3; ++i) B6.data()[i] = static_cast<float>(i + 2);
+    Tensor B6({3}, use_gpu); // 3-element vector
+    std::vector<float> B6_data(3);
+    for (int i = 0; i < 3; ++i) B6_data[i] = static_cast<float>(i + 2);
+    B6.load_data(B6_data);
 
     Tensor mask2 = A6 > B6;
     print_tensor(mask2, "Mask (A > B)");
 
     // Create a 3D input tensor (batch_size=1, channels=1, length=6)
-    Tensor inputmp({1, 1, 6}, false);
-    for (int i = 0; i < 6; ++i) inputmp.data()[i] = static_cast<float>(i + 1);
-    
+    Tensor inputmp({1, 1, 6}, use_gpu);
+    std::vector<float> inputmp_data(6);
+    for (int i = 0; i < 6; ++i) inputmp_data[i] = static_cast<float>(i + 1);
+    inputmp.load_data(inputmp_data);
+
     // Print original tensor
     print_tensor(inputmp, "Original Tensor");
-    
+
     // Test max pooling
-    Tensor max_pooled = inputmp.maxpool(2, 2, false);
+    Tensor max_pooled = inputmp.maxpool(2, 2, use_gpu);
     print_tensor(max_pooled, "Max Pooled Tensor");
-    
+
     // Test average pooling
-    Tensor avg_pooled = inputmp.avgpool(2, 2, false);
+    Tensor avg_pooled = inputmp.avgpool(2, 2, use_gpu);
     print_tensor(avg_pooled, "Average Pooled Tensor");
 
-    // With GPU
-    std::cout << "Starting Unitary tests for max and avg pool using GPU" << "\n";
-
-    // Create a 4D input tensor (batch_size=1, channels=1, height=4, width=4)
-    Tensor inputmpgpu({1, 1, 4, 4}, false); // Use GPU
-    for (int i = 0; i < 16; ++i) inputmpgpu.data()[i] = static_cast<float>(i + 1);
-    std::cout << "4D Tensor created\n";
-
-    // Print original tensor
-    print_tensor(inputmpgpu, "Original Tensor");
-
-    // Test max pooling
-    Tensor max_pooledgpu = inputmpgpu.maxpool2d(2, 2, 2, false);
-    print_tensor(max_pooledgpu, "Max Pooled Tensor");
-
-    // Test average pooling
-    Tensor avg_pooledgpu = inputmpgpu.avgpool2d(2, 2, 2, false);
-    print_tensor(avg_pooledgpu, "Average Pooled Tensor");
     return 0;
 }
