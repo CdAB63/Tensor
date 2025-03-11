@@ -9,6 +9,7 @@
 #include "cuda_kernels.h"
 #include <iostream>
 #include <cuda_runtime.h>
+#include <Eigen/Dense>
 
 class Tensor {
 public:
@@ -30,7 +31,7 @@ public:
     
     // Basic operations
     bool use_gpu() const;
-    Tensor add(const Tensor& other, float alpha = 1.0f) const;
+    Tensor add(const Tensor& other) const;
     float dot(const Tensor& other) const;
     Tensor conv1d(const Tensor& kernel, int stride, bool padding) const;
     Tensor conv1d_cpu(const Tensor& kernel, int stride, bool padding) const;

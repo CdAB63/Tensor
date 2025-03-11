@@ -66,7 +66,7 @@ void Tensor::allocate_memory() {
             throw std::runtime_error("CUDA memory allocation failed");
         }
         data_ = std::shared_ptr<float>(gpu_data, [](float* ptr) { cudaFree(ptr); });
-        std::cout << "CUDA memory allocated successfully for tensor of size " << size << std::endl;
+        //std::cout << "CUDA memory allocated successfully for tensor of size " << size << std::endl;
 #else
         throw std::runtime_error("CUDA not available");
 #endif
@@ -83,7 +83,7 @@ void Tensor::free_memory() {
     // Memory is automatically managed by shared_ptr
 }
 
-Tensor Tensor::add(const Tensor& other, float alpha) const {
+Tensor Tensor::add(const Tensor& other) const {
     if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
 
     Tensor result(shape_, use_gpu_);
@@ -92,13 +92,13 @@ Tensor Tensor::add(const Tensor& other, float alpha) const {
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_add(data_.get(), other.data_.get(), alpha, result.data_.get(), size);
+        launch_cuda_add(data_.get(), other.data_.get(), result.data_.get(), size);
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
         for (size_t i = 0; i < size; ++i) {
-            result.data_.get()[i] = data_.get()[i] + alpha * other.data_.get()[i];
+            result.data_.get()[i] = data_.get()[i] + other.data_.get()[i];
         }
     }
 
@@ -461,8 +461,16 @@ Tensor Tensor::add_scaled(const Tensor& other, float alpha) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = data_.get()[i] + alpha * other.data_.get()[i];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_add(data_.get(), other.data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data()[i] = data_.get()[i] + alpha * other.data_.get()[i];
+        }
     }
 
     return result;
@@ -475,8 +483,16 @@ Tensor Tensor::multiply(const Tensor& other) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = data_.get()[i] * other.data_.get()[i];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_multiply(data_.get(), other.data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data()[i] = data_.get()[i] * other.data_.get()[i];
+        }
     }
 
     return result;
@@ -489,9 +505,17 @@ Tensor Tensor::divide(const Tensor& other) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        if (other.data_.get()[i] == 0) throw std::runtime_error("Division by zero");
-        result.data()[i] = data_.get()[i] / other.data_.get()[i];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_divide(data_.get(), other.data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            if (other.data_.get()[i] == 0) throw std::runtime_error("Division by zero");
+                result.data()[i] = data_.get()[i] / other.data_.get()[i];
+        }
     }
 
     return result;
@@ -502,8 +526,16 @@ Tensor Tensor::multiply_scalar(float scalar) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = data_.get()[i] * scalar;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_multiply_scalar(data_.get(), scalar, result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data()[i] = data_.get()[i] * scalar;
+        }
     }
 
     return result;
@@ -527,11 +559,18 @@ Tensor Tensor::sum(int axis) const {
     for (int i = axis + 1; i < shape_.size(); ++i) {
         stride *= shape_[i];
     }
-
-    // Perform sum along the axis
-    for (size_t i = 0; i < size; ++i) {
-        size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-        result.data()[output_idx] += data_.get()[i];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_sum(data_.get(), result.data_.get(), axis, stride, shape_[axis], size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Perform sum along the axis
+        for (size_t i = 0; i < size; ++i) {
+            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
+            result.data()[output_idx] += data_.get()[i];
+        }
     }
 
     return result;
@@ -543,12 +582,20 @@ Tensor Tensor::mean(int axis) const {
 
     // Divide by the size of the axis to compute the mean
     size_t size = 1;
+
     for (int dim : sum_result.shape()) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        sum_result.data()[i] /= axis_size;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_mean(data_.get(), axis_size, size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i)
+            sum_result.data()[i] /= axis_size;
     }
-
+    
     return sum_result;
 }
 
@@ -565,23 +612,35 @@ Tensor Tensor::max(int axis) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Calculate strides
-    size_t stride = 1;
-    for (int i = axis + 1; i < shape_.size(); ++i) {
-        stride *= shape_[i];
-    }
+    // Calculate dimensions
+    int dim0 = shape_[0];  
+    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
 
-    // Initialize result with the smallest possible float value
-    std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], -std::numeric_limits<float>::max());
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_max(data_.get(), result.data(), axis, dim0, dim1);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Initialize result with the smallest possible float value
+        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], -std::numeric_limits<float>::max());
 
-    // Perform max along the axis
-    for (size_t i = 0; i < size; ++i) {
-        size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-        result.data()[output_idx] = std::max(result.data()[output_idx], data_.get()[i]);
+        // Perform max along the axis
+        size_t stride = 1;
+        for (int i = axis + 1; i < shape_.size(); ++i) {
+            stride *= shape_[i];
+        }
+
+        for (size_t i = 0; i < size; ++i) {
+            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
+            result.data()[output_idx] = std::max(result.data()[output_idx], data_.get()[i]);
+        }
     }
 
     return result;
 }
+
 
 Tensor Tensor::min(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
@@ -596,23 +655,35 @@ Tensor Tensor::min(int axis) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Calculate strides
-    size_t stride = 1;
-    for (int i = axis + 1; i < shape_.size(); ++i) {
-        stride *= shape_[i];
-    }
+    // Calculate dimensions
+    int dim0 = shape_[0];  
+    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
 
-    // Initialize result with the largest possible float value
-    std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], std::numeric_limits<float>::max());
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_min(data_.get(), result.data(), axis, dim0, dim1);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Initialize result with the largest possible float value
+        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], std::numeric_limits<float>::max());
 
-    // Perform min along the axis
-    for (size_t i = 0; i < size; ++i) {
-        size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-        result.data()[output_idx] = std::min(result.data()[output_idx], data_.get()[i]);
+        // Perform min along the axis
+        size_t stride = 1;
+        for (int i = axis + 1; i < shape_.size(); ++i) {
+            stride *= shape_[i];
+        }
+
+        for (size_t i = 0; i < size; ++i) {
+            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
+            result.data()[output_idx] = std::min(result.data()[output_idx], data_.get()[i]);
+        }
     }
 
     return result;
 }
+
 
 Tensor Tensor::argmax(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
@@ -628,27 +699,39 @@ Tensor Tensor::argmax(int axis) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Calculate strides
-    size_t stride = 1;
-    for (int i = axis + 1; i < shape_.size(); ++i) {
-        stride *= shape_[i];
-    }
+    // Calculate dimensions
+    int dim0 = shape_[0];  
+    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
 
-    // Initialize result with zeros
-    std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_argmax(data_.get(), reinterpret_cast<int*>(result.data()), axis, dim0, dim1);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Initialize result with zeros
+        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
 
-    // Perform argmax along the axis
-    for (size_t i = 0; i < size; ++i) {
-        size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-        size_t current_idx = (i / stride) % shape_[axis];
+        // Calculate strides
+        size_t stride = 1;
+        for (int i = axis + 1; i < shape_.size(); ++i) {
+            stride *= shape_[i];
+        }
 
-        if (data_.get()[i] > data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
-            result.data()[output_idx] = static_cast<float>(current_idx);
+        for (size_t i = 0; i < size; ++i) {
+            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
+            size_t current_idx = (i / stride) % shape_[axis];
+
+            if (data_.get()[i] > data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
+                result.data()[output_idx] = static_cast<float>(current_idx);
+            }
         }
     }
 
     return result;
 }
+
 
 Tensor Tensor::argmin(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
@@ -664,22 +747,33 @@ Tensor Tensor::argmin(int axis) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Calculate strides
-    size_t stride = 1;
-    for (int i = axis + 1; i < shape_.size(); ++i) {
-        stride *= shape_[i];
-    }
+    // Calculate dimensions
+    int dim0 = shape_[0];  
+    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
 
-    // Initialize result with zeros
-    std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_argmin(data_.get(), reinterpret_cast<int*>(result.data()), axis, dim0, dim1);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Initialize result with zeros
+        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
 
-    // Perform argmin along the axis
-    for (size_t i = 0; i < size; ++i) {
-        size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-        size_t current_idx = (i / stride) % shape_[axis];
+        // Calculate strides
+        size_t stride = 1;
+        for (int i = axis + 1; i < shape_.size(); ++i) {
+            stride *= shape_[i];
+        }
 
-        if (data_.get()[i] < data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
-            result.data()[output_idx] = static_cast<float>(current_idx);
+        for (size_t i = 0; i < size; ++i) {
+            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
+            size_t current_idx = (i / stride) % shape_[axis];
+
+            if (data_.get()[i] < data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
+                result.data()[output_idx] = static_cast<float>(current_idx);
+            }
         }
     }
 
@@ -697,13 +791,21 @@ Tensor Tensor::matmul(const Tensor& other) const {
 
     Tensor result({m, p}, use_gpu_);
 
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < p; ++j) {
-            float sum = 0.0f;
-            for (int k = 0; k < n; ++k) {
-                sum += data_.get()[i * n + k] * other.data()[k * p + j];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_matmul(data_.get(), other.data_.get(), result.data_.get(), m, n, p);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < p; ++j) {
+                float sum = 0.0f;
+                for (int k = 0; k < n; ++k) {
+                    sum += data_.get()[i * n + k] * other.data()[k * p + j];
+                }
+                result.data()[i * p + j] = sum;
             }
-            result.data()[i * p + j] = sum;
         }
     }
 
@@ -718,6 +820,7 @@ Tensor Tensor::einsum(const EinsumOperation& operation, const Tensor& other) con
 // Now we define 
 
 Tensor Tensor::inv() const {
+
     if (shape_.size() != 2 || shape_[0] != shape_[1]) {
         throw std::runtime_error("Matrix must be square to compute inverse");
     }
@@ -726,56 +829,64 @@ Tensor Tensor::inv() const {
     Tensor result({n, n}, use_gpu_);
     Tensor augmented({n, 2 * n}, use_gpu_);
 
-    // Initialize augmented matrix [A | I]
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            augmented.data()[i * 2 * n + j] = data_.get()[i * n + j];
-            augmented.data()[i * 2 * n + j + n] = (i == j) ? 1.0f : 0.0f;
-        }
-    }
-
-    // Perform Gaussian elimination
-    for (int i = 0; i < n; ++i) {
-        // Find the pivot
-        int pivot = i;
-        for (int j = i + 1; j < n; ++j) {
-            if (std::abs(augmented.data()[j * 2 * n + i]) > std::abs(augmented.data()[pivot * 2 * n + i])) {
-                pivot = j;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_inv(data_.get(), result.data_.get(), n);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Initialize augmented matrix [A | I]
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                augmented.data()[i * 2 * n + j] = data_.get()[i * n + j];
+                augmented.data()[i * 2 * n + j + n] = (i == j) ? 1.0f : 0.0f;
             }
         }
 
-        // Swap rows
-        if (pivot != i) {
+        // Perform Gaussian elimination
+        for (int i = 0; i < n; ++i) {
+            // Find the pivot
+            int pivot = i;
+            for (int j = i + 1; j < n; ++j) {
+                if (std::abs(augmented.data()[j * 2 * n + i]) > std::abs(augmented.data()[pivot * 2 * n + i])) {
+                    pivot = j;
+                }
+            }
+
+            // Swap rows
+            if (pivot != i) {
+                for (int j = 0; j < 2 * n; ++j) {
+                    std::swap(augmented.data()[i * 2 * n + j], augmented.data()[pivot * 2 * n + j]);
+                }
+            }
+
+            // Normalize the pivot row
+            float pivot_value = augmented.data()[i * 2 * n + i];
+            if (pivot_value == 0.0f) {
+                throw std::runtime_error("Matrix is singular and cannot be inverted");
+            }
+
             for (int j = 0; j < 2 * n; ++j) {
-                std::swap(augmented.data()[i * 2 * n + j], augmented.data()[pivot * 2 * n + j]);
+                augmented.data()[i * 2 * n + j] /= pivot_value;
             }
-        }
 
-        // Normalize the pivot row
-        float pivot_value = augmented.data()[i * 2 * n + i];
-        if (pivot_value == 0.0f) {
-            throw std::runtime_error("Matrix is singular and cannot be inverted");
-        }
-
-        for (int j = 0; j < 2 * n; ++j) {
-            augmented.data()[i * 2 * n + j] /= pivot_value;
-        }
-
-        // Eliminate other rows
-        for (int j = 0; j < n; ++j) {
-            if (j != i) {
-                float factor = augmented.data()[j * 2 * n + i];
-                for (int k = 0; k < 2 * n; ++k) {
-                    augmented.data()[j * 2 * n + k] -= factor * augmented.data()[i * 2 * n + k];
+            // Eliminate other rows
+            for (int j = 0; j < n; ++j) {
+                if (j != i) {
+                    float factor = augmented.data()[j * 2 * n + i];
+                    for (int k = 0; k < 2 * n; ++k) {
+                        augmented.data()[j * 2 * n + k] -= factor * augmented.data()[i * 2 * n + k];
+                    }
                 }
             }
         }
-    }
 
-    // Extract the inverse from the augmented matrix
-    for (int i = 0; i < n; ++i) {
-        for (int j = 0; j < n; ++j) {
-            result.data()[i * n + j] = augmented.data()[i * 2 * n + j + n];
+        // Extract the inverse from the augmented matrix
+        for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < n; ++j) {
+                result.data()[i * n + j] = augmented.data()[i * 2 * n + j + n];
+            }
         }
     }
 
@@ -787,18 +898,28 @@ Tensor Tensor::transpose() const {
         throw std::runtime_error("Transpose is only defined for 2D tensors");
     }
 
-    int m = shape_[0];
-    int n = shape_[1];
+    int m = shape_[0];  // Original rows
+    int n = shape_[1];  // Original cols
     Tensor result({n, m}, use_gpu_);
 
-    for (int i = 0; i < m; ++i) {
-        for (int j = 0; j < n; ++j) {
-            result.data()[j * m + i] = data_.get()[i * n + j];
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_transpose(data_.get(), result.data(), m, n);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU Implementation
+        for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
+                result.data()[j * m + i] = data_.get()[i * n + j];
+            }
         }
     }
 
     return result;
 }
+
 
 float Tensor::det() const {
     if (shape_.size() != 2 || shape_[0] != shape_[1]) {
@@ -806,25 +927,50 @@ float Tensor::det() const {
     }
 
     int n = shape_[0];
-    if (n == 1) {
-        return data_.get()[0];
-    }
 
-    float determinant = 0.0f;
-    for (int j = 0; j < n; ++j) {
-        Tensor submatrix({n - 1, n - 1}, use_gpu_);
-        for (int i = 1; i < n; ++i) {
-            for (int k = 0, l = 0; k < n; ++k) {
-                if (k == j) continue;
-                submatrix.data()[(i - 1) * (n - 1) + l] = data_.get()[i * n + k];
-                ++l;
-            }
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float result;
+        float* d_A;
+        float* d_result;
+
+        cudaMalloc(&d_A, n * n * sizeof(float));
+        cudaMalloc(&d_result, sizeof(float));
+
+        cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
+
+        launch_cuda_det(d_A, d_result, n);
+
+        cudaMemcpy(&result, d_result, sizeof(float), cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_result);
+
+        return result;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU Implementation (Laplace Expansion)
+        if (n == 1) {
+            return data_.get()[0];
         }
-        float sub_det = submatrix.det();
-        determinant += (j % 2 == 0 ? 1 : -1) * data_.get()[j] * sub_det;
-    }
 
-    return determinant;
+        float determinant = 0.0f;
+        for (int j = 0; j < n; ++j) {
+            Tensor submatrix({n - 1, n - 1}, use_gpu_);
+            for (int i = 1; i < n; ++i) {
+                for (int k = 0, l = 0; k < n; ++k) {
+                    if (k == j) continue;
+                    submatrix.data()[(i - 1) * (n - 1) + l] = data_.get()[i * n + k];
+                    ++l;
+                }
+            }
+            float sub_det = submatrix.det();
+            determinant += (j % 2 == 0 ? 1 : -1) * data_.get()[j] * sub_det;
+        }
+        return determinant;
+    }
 }
 
 std::pair<float, Tensor> Tensor::eig() const {
@@ -837,22 +983,52 @@ std::pair<float, Tensor> Tensor::eig() const {
     std::fill(eigenvector.data(), eigenvector.data() + n, 1.0f);
 
     float eigenvalue = 0.0f;
-    for (int iter = 0; iter < 100; ++iter) {
-        Tensor new_eigenvector = matmul(eigenvector);
-        float norm = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            norm += new_eigenvector.data()[i] * new_eigenvector.data()[i];
-        }
-        norm = std::sqrt(norm);
 
-        for (int i = 0; i < n; ++i) {
-            eigenvector.data()[i] = new_eigenvector.data()[i] / norm;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float* d_A, * d_x, * d_y, * d_norm;
+        float h_eigenvalue;
+
+        cudaMalloc(&d_A, n * n * sizeof(float));
+        cudaMalloc(&d_x, n * sizeof(float));
+        cudaMalloc(&d_y, n * sizeof(float));
+        cudaMalloc(&d_norm, sizeof(float));
+
+        cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_x, eigenvector.data(), n * sizeof(float), cudaMemcpyHostToDevice);
+
+        launch_cuda_eig(d_A, d_x, d_y, d_norm, &h_eigenvalue, n, 100);
+
+        cudaMemcpy(eigenvector.data(), d_x, n * sizeof(float), cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_x);
+        cudaFree(d_y);
+        cudaFree(d_norm);
+
+        return {h_eigenvalue, eigenvector};
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Power Iteration Method (CPU)
+        for (int iter = 0; iter < 100; ++iter) {
+            Tensor new_eigenvector = matmul(eigenvector);
+            float norm = 0.0f;
+            for (int i = 0; i < n; ++i) {
+                norm += new_eigenvector.data()[i] * new_eigenvector.data()[i];
+            }
+            norm = std::sqrt(norm);
+
+            for (int i = 0; i < n; ++i) {
+                eigenvector.data()[i] = new_eigenvector.data()[i] / norm;
+            }
+
+            eigenvalue = norm;
         }
 
-        eigenvalue = norm;
+        return {eigenvalue, eigenvector};
     }
-
-    return {eigenvalue, eigenvector};
 }
 
 std::tuple<Tensor, Tensor, Tensor> Tensor::svd() const {
@@ -863,11 +1039,53 @@ std::tuple<Tensor, Tensor, Tensor> Tensor::svd() const {
     int m = shape_[0];
     int n = shape_[1];
     Tensor U({m, m}, use_gpu_);
-    Tensor S({m, n}, use_gpu_);
-    Tensor V({n, n}, use_gpu_);
+    Tensor S({std::min(m, n)}, use_gpu_);
+    Tensor VT({n, n}, use_gpu_);
 
-    // Placeholder for actual SVD computation
-    throw std::runtime_error("SVD not implemented");
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Allocate GPU memory
+        float *d_A, *d_U, *d_S, *d_VT;
+        cudaMalloc(&d_A, m * n * sizeof(float));
+        cudaMalloc(&d_U, m * m * sizeof(float));
+        cudaMalloc(&d_S, std::min(m, n) * sizeof(float));
+        cudaMalloc(&d_VT, n * n * sizeof(float));
+
+        // Copy data to GPU
+        cudaMemcpy(d_A, data_.get(), m * n * sizeof(float), cudaMemcpyHostToDevice);
+
+        // Launch CUDA SVD
+        launch_cuda_svd(d_A, d_U, d_S, d_VT, m, n);
+
+        // Copy results back to CPU
+        cudaMemcpy(U.data(), d_U, m * m * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(S.data(), d_S, std::min(m, n) * sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(VT.data(), d_VT, n * n * sizeof(float), cudaMemcpyDeviceToHost);
+
+        // Free GPU memory
+        cudaFree(d_A);
+        cudaFree(d_U);
+        cudaFree(d_S);
+        cudaFree(d_VT);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Use Eigen for CPU SVD
+        Eigen::MatrixXf A = Eigen::Map<Eigen::MatrixXf>(data_.get(), m, n);
+        Eigen::JacobiSVD<Eigen::MatrixXf> svd(A, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+        // Copy data to Tensor objects
+        Eigen::MatrixXf U_mat = svd.matrixU();
+        Eigen::VectorXf S_vec = svd.singularValues();
+        Eigen::MatrixXf VT_mat = svd.matrixV().transpose();
+
+        std::memcpy(U.data(), U_mat.data(), m * m * sizeof(float));
+        std::memcpy(S.data(), S_vec.data(), std::min(m, n) * sizeof(float));
+        std::memcpy(VT.data(), VT_mat.data(), n * n * sizeof(float));
+    }
+
+    return {U, S, VT};
 }
 
 Tensor Tensor::reshape(const std::vector<int>& new_shape) const {
@@ -882,7 +1100,17 @@ Tensor Tensor::reshape(const std::vector<int>& new_shape) const {
     }
 
     Tensor result(new_shape, use_gpu_);
-    std::copy(data_.get(), data_.get() + current_size, result.data_.get());
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_reshape(data_.get(), result.data_.get(), new_size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU reshape logic: just copy the data (reshape doesn't change the data itself)
+        std::copy(data_.get(), data_.get() + current_size, result.data_.get());
+    }
+
     return result;
 }
 
@@ -890,7 +1118,20 @@ Tensor Tensor::flatten() const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    return reshape({static_cast<int>(size)});
+    Tensor result({static_cast<int>(size)}, use_gpu_);
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_flatten(data_.get(), result.data_.get(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU flatten: just copy the data to a 1D tensor
+        std::copy(data_.get(), data_.get() + size, result.data_.get());
+    }
+
+    return result;
 }
 
 Tensor Tensor::expand_dims(int axis) const {
@@ -900,11 +1141,27 @@ Tensor Tensor::expand_dims(int axis) const {
 
     std::vector<int> new_shape = shape_;
     new_shape.insert(new_shape.begin() + axis, 1);
-    return reshape(new_shape);
+
+    Tensor result(new_shape, use_gpu_);
+    size_t new_size = 1;
+    for (int dim : new_shape) new_size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_expand_dims(data_.get(), result.data_.get(), new_size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU expand_dims: reshape logic with a new dimension
+        std::copy(data_.get(), data_.get() + new_size, result.data_.get());
+    }
+
+    return result;
 }
 
 Tensor Tensor::squeeze() const {
-    std::vector<int> new_shape;
+    std::vector<size_t> new_shape;  // Use size_t instead of int
     for (int dim : shape_) {
         if (dim != 1) {
             new_shape.push_back(dim);
@@ -915,66 +1172,121 @@ Tensor Tensor::squeeze() const {
         new_shape.push_back(1); // Ensure at least 1 dimension
     }
 
-    return reshape(new_shape);
-}
+    // Convert new_shape to std::vector<int> before passing it to the constructor
+    std::vector<int> int_new_shape(new_shape.begin(), new_shape.end());
+    Tensor result(int_new_shape, use_gpu_);
+    size_t total_size = 1;
+    for (size_t dim : new_shape) total_size *= dim;
 
-Tensor Tensor::concat(const Tensor& other, int axis) const {
-    if (shape_.size() != other.shape().size()) {
-        throw std::runtime_error("Tensors must have the same number of dimensions");
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Cast const int* to const size_t* to avoid the "const qualifier" issue
+        launch_cuda_squeeze(data_.get(), result.data_.get(), total_size, new_shape.data(), const_cast<size_t*>(reinterpret_cast<const size_t*>(shape_.data())));
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU squeeze: just copy the data while skipping size 1 dimensions
+        std::copy(data_.get(), data_.get() + total_size, result.data_.get());
     }
-
-    for (size_t i = 0; i < shape_.size(); ++i) {
-        if (i != axis && shape_[i] != other.shape()[i]) {
-            throw std::runtime_error("All dimensions except the concatenation axis must match");
-        }
-    }
-
-    std::vector<int> new_shape = shape_;
-    new_shape[axis] += other.shape()[axis];
-
-    Tensor result(new_shape, use_gpu_);
-
-    // Calculate the size of the data
-    size_t this_size = 1;
-    for (int dim : shape_) this_size *= dim;
-
-    size_t other_size = 1;
-    for (int dim : other.shape()) other_size *= dim;
-
-    // Copy data from this tensor
-    std::copy(data_.get(), data_.get() + this_size, result.data_.get());
-
-    // Copy data from the other tensor
-    std::copy(other.data(), other.data() + other_size, result.data_.get() + this_size);
 
     return result;
 }
+
+Tensor Tensor::concat(const Tensor& other, int axis) const {
+    if (axis < 0 || axis >= shape_.size()) {
+        throw std::runtime_error("Invalid axis for concat");
+    }
+
+    if (other.shape_ == shape_) {
+        // Handle error or define behavior for same shapes
+        throw std::runtime_error("Tensors must have compatible shapes");
+    }
+
+    // Calculate the new shape
+    std::vector<int> new_shape = shape_;
+    new_shape[axis] += other.shape_[axis]; // Concatenate along the given axis
+
+    Tensor result(new_shape, use_gpu_);
+    size_t total_size = 1;
+    for (int dim : new_shape) total_size *= dim;
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Convert shapes to size_t
+        std::vector<size_t> shape1_size_t(shape_.begin(), shape_.end());
+        std::vector<size_t> shape2_size_t(other.shape_.begin(), other.shape_.end());
+        std::vector<size_t> new_shape_size_t(new_shape.begin(), new_shape.end());
+
+        launch_cuda_concat(data_.get(), other.data_.get(), result.data_.get(), total_size, axis, shape1_size_t.data(), shape2_size_t.data(), new_shape_size_t.data());
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU concat: manually concatenate the two tensors along the axis
+        size_t size1 = 1;
+        for (int dim : shape_) size1 *= dim;
+        size_t size2 = 1;
+        for (int dim : other.shape_) size2 *= dim;
+
+        // Copy data from first tensor
+        std::copy(data_.get(), data_.get() + size1, result.data_.get());
+
+        // Copy data from second tensor, adjusted for concatenation axis
+        std::copy(other.data_.get(), other.data_.get() + size2, result.data_.get() + size1);
+    }
+
+    return result;
+}
+
 
 Tensor Tensor::stack(const std::vector<Tensor>& tensors, int axis) {
     if (tensors.empty()) {
         throw std::runtime_error("No tensors provided for stacking");
     }
 
+    // Check that all tensors have the same shape
     for (size_t i = 1; i < tensors.size(); ++i) {
         if (tensors[i].shape() != tensors[0].shape()) {
             throw std::runtime_error("All tensors must have the same shape for stacking");
         }
     }
 
+    // Create the new shape
     std::vector<int> new_shape = tensors[0].shape();
     new_shape.insert(new_shape.begin() + axis, tensors.size());
 
+    // Convert new_shape to size_t for CUDA compatibility
+    std::vector<size_t> size_t_new_shape(new_shape.begin(), new_shape.end());
+
+    // Create result tensor on the appropriate device
     Tensor result(new_shape, tensors[0].use_gpu());
 
     // Calculate the size of each tensor's data
     size_t tensor_size = 1;
     for (int dim : tensors[0].shape()) tensor_size *= dim;
 
-    // Copy data from all tensors
-    size_t offset = 0;
-    for (const Tensor& tensor : tensors) {
-        std::copy(tensor.data(), tensor.data() + tensor_size, result.data_.get() + offset);
-        offset += tensor_size;
+    // If CUDA is enabled, use GPU implementation
+    if (tensors[0].use_gpu()) {
+#ifdef USE_CUDA
+        // Assuming launch_cuda_stack function is defined similarly to your previous functions
+        launch_cuda_stack(
+            tensors[0].data_.get(), result.data_.get(),
+            tensor_size * tensors.size(),
+            size_t_new_shape.data(),
+            reinterpret_cast<size_t*>(tensors[0].shape().data()),
+            axis, tensor_size
+        );
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // For CPU, just copy the data as usual
+        size_t offset = 0;
+        for (const Tensor& tensor : tensors) {
+            std::copy(tensor.data(), tensor.data() + tensor_size, result.data_.get() + offset);
+            offset += tensor_size;
+        }
     }
 
     return result;
@@ -985,6 +1297,7 @@ Tensor Tensor::permute(const std::vector<int>& new_order) const {
         throw std::runtime_error("New order must have the same number of dimensions as the tensor");
     }
 
+    // Check that all the axes in new_order are valid
     std::vector<int> new_shape;
     for (int axis : new_order) {
         if (axis < 0 || axis >= shape_.size()) {
@@ -999,10 +1312,28 @@ Tensor Tensor::permute(const std::vector<int>& new_order) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Perform permutation
-    // This is a placeholder for the actual permutation logic, which depends on the tensor's layout
-    // For simplicity, we assume a contiguous memory layout here
-    std::copy(data_.get(), data_.get() + size, result.data_.get());
+    // If using GPU, launch the CUDA kernel
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Create temporary size_t copies of the shapes
+        std::vector<size_t> new_shape_size_t(new_shape.begin(), new_shape.end());
+        std::vector<size_t> shape_size_t(shape_.begin(), shape_.end());
+
+        // Launch the CUDA kernel for permute
+        launch_cuda_permute(
+            data_.get(), result.data_.get(),
+            size,
+            new_shape_size_t.data(),
+            shape_size_t.data(),
+            new_order.data()
+        );
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // For CPU, just copy the data and permute manually
+        std::copy(data_.get(), data_.get() + size, result.data_.get());
+    }
 
     return result;
 }

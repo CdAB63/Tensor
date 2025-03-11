@@ -68,7 +68,7 @@ int main(int argc, char* argv[]) {
         B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
 
         // Perform operations on tensors
-        Tensor C = A.add(B, 1.0f);
+        Tensor C = A.add(B);
         std::cout << "Addition successful\n";
 
         // Retrieve data from tensor C
@@ -83,60 +83,71 @@ int main(int argc, char* argv[]) {
         std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
+    std::cout << "OK\n";
 
     std::cout << "Creating tensors A and B\n";
     Tensor A({2, 2}, use_gpu); // Use GPU or CPU based on mode
     Tensor B({2, 2}, use_gpu); // Use GPU or CPU based on mode
     std::cout << "Tensors A and B created\n";
-
     // Load data into tensors
     std::cout << "Loading data into tensor A\n";
     A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
-
     std::cout << "Loading data into tensor B\n";
     B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
-
     // Print initial tensors
     print_tensor(A, "Tensor A");
     print_tensor(B, "Tensor B");
 
     // Test dot product
+    std::cout << "***** TESTING DOT PRODUCT *****\n";
     float dot_result = A.dot(B);
     std::cout << "Dot product: " << dot_result << "\n\n";
 
+    // Test add: D = A + B
+    std::cout << "***** TESTING ADD *****\n";
+    Tensor THE_ADD = A.add(B);
+    print_tensor(THE_ADD, "D = A + B");
+
     // Test subtraction: D = A - B
+    std::cout << "***** TESTING SUBTRACT *****\n";
     Tensor D = A.subtract(B);
     print_tensor(D, "D = A - B");
 
     // Test scaled addition: E = A + 2.5 * B
-    Tensor E = A.add_scaled(B, 2.5f);
+    std::cout << "***** TESTING ADD_SCALED *****\n";
+    int alpha = 2.5f;
+    Tensor E = A.add_scaled(B, alpha);
     print_tensor(E, "E = A + 2.5 * B");
 
     // Test element-wise multiplication: F = A * B
+    std::cout << "***** TESTING MULTIPLY *****\n";
     Tensor F = A.multiply(B);
     print_tensor(F, "F = A * B");
 
     // Test element-wise division: G = A / B
+    std::cout << "***** TESTING DIVIDE *****\n";
     Tensor G = A.divide(B);
     print_tensor(G, "G = A / B");
 
     // Test scalar multiplication: H = 3.0 * A
+    std::cout << "***** TESTING MULTIPLY_SCALAR *****\n";
     Tensor H = A.multiply_scalar(3.0f);
     print_tensor(H, "H = 3.0 * A");
 
     // Test power operation: I = A^2
+    std::cout << "***** TESTING POWER *****\n";
     Tensor I = A.power(2.0f);
     print_tensor(I, "I = A^2");
 
     // Create a 1D input tensor (batch_size=1, in_channels=1, length=5)
     Tensor input1d({1, 1, 5}, use_gpu);
     input1d.load_data({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
-
     // Create a 1D kernel (kernel_size=3, in_channels=1, out_channels=1)
     Tensor kernel1d({3, 1, 1}, use_gpu);
     kernel1d.load_data({1.0f, 2.0f, 3.0f});
 
     // Perform 1D convolution
+    std::cout << "***** TESTING 1D CONVOLUTION *****\n";
     Tensor output1d = input1d.conv1d(kernel1d, 1, true);
     print_tensor(output1d, "1D Convolution Output");
 
