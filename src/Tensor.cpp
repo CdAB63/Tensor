@@ -986,45 +986,49 @@ std::pair<float, Tensor> Tensor::eig() const {
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        float* d_A, * d_x, * d_y, * d_norm;
-        float h_eigenvalue = 0.0f; // Initialize eigenvalue
+        float* d_norm;
+        cudaMalloc(&d_norm, sizeof(float));
+        if (d_norm == nullptr) {
+            throw std::runtime_error("Failed to allocate memory for d_norm on GPU");
+        }
 
-        // Allocate device memory
-        cudaError_t err;
-        err = cudaMalloc(&d_A, n * n * sizeof(float));
-        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_A");
-        err = cudaMalloc(&d_x, n * sizeof(float));
-        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_x");
-        err = cudaMalloc(&d_y, n * sizeof(float));
-        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_y");
-        err = cudaMalloc(&d_norm, sizeof(float));
-        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_norm");
+        float h_norm;
 
-        // Copy data to device
-        err = cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
-        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_A");
-        err = cudaMemcpy(d_x, eigenvector.data(), n * sizeof(float), cudaMemcpyHostToDevice);
-        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_x");
+        dim3 threads(256);
+        dim3 blocks((n + threads.x - 1) / threads.x);
 
-        // Launch CUDA kernel
-        launch_cuda_eig(d_A, d_x, d_y, d_norm, &h_eigenvalue, n, 100);
+        if (blocks.x > 65535 || blocks.y > 65535 || blocks.z > 65535) {
+            throw std::runtime_error("Kernel launch configuration exceeds GPU limits");
+        }
 
-        // Copy result back to host
-        err = cudaMemcpy(eigenvector.data(), d_x, n * sizeof(float), cudaMemcpyDeviceToHost);
-        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_x back to host");
+        for (int iter = 0; iter < 100; ++iter) {
+            Tensor new_eigenvector({n, 1}, use_gpu_);
 
-        // Free device memory
-        cudaFree(d_A);
-        cudaFree(d_x);
-        cudaFree(d_y);
+            // Matrix-vector multiplication
+            launch_cuda_matvec_mul(data_.get(), eigenvector.data(), new_eigenvector.data(), n);
+
+            // Reset norm
+            cudaMemset(d_norm, 0, sizeof(float));
+
+            // Compute norm and normalize
+            launch_cuda_normalize(new_eigenvector.data(), d_norm, n);
+
+            // Copy norm back to host
+            cudaMemcpy(&h_norm, d_norm, sizeof(float), cudaMemcpyDeviceToHost);
+
+            // Update eigenvector
+            eigenvector = new_eigenvector;
+
+            // Update eigenvalue
+            eigenvalue = h_norm;
+        }
+
         cudaFree(d_norm);
-
-        return {h_eigenvalue, eigenvector};
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // Power Iteration Method (CPU)
+        // CPU Implementation
         for (int iter = 0; iter < 100; ++iter) {
             Tensor new_eigenvector = matmul(eigenvector);
             float norm = 0.0f;
@@ -1039,9 +1043,9 @@ std::pair<float, Tensor> Tensor::eig() const {
 
             eigenvalue = norm;
         }
-
-        return {eigenvalue, eigenvector};
     }
+
+    return {eigenvalue, eigenvector};
 }
 
 std::tuple<Tensor, Tensor, Tensor> Tensor::svd() const {

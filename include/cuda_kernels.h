@@ -53,7 +53,8 @@ void launch_cuda_min(const float* d_A, float* d_result, int axis, int dim0, int 
 void launch_cuda_max(const float* d_A, float* d_result, int axis, int dim0, int dim1);
 void launch_cuda_transpose(const float* d_A, float* d_result, int rows, int cols);
 void launch_cuda_det(float* d_A, float* d_result, int n);
-void launch_cuda_eig(float* d_A, float* d_x, float* d_y, float* d_norm, float* h_eigenvalue, int n, int iterations);
+void launch_cuda_matvec_mul(const float* matrix, const float* vector, float* result, int n); // for eigen
+void launch_cuda_normalize(float* vector, float* norm, int n); // for eigen
 void launch_cuda_svd(const float* d_A, float* d_U, float* d_S, float* d_VT, int m, int n);
 void launch_cuda_reshape(const float* input, float* output, size_t total_size);
 void launch_cuda_flatten(const float* input, float* output, size_t total_size);

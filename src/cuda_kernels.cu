@@ -740,56 +740,57 @@ __global__ void cuda_matmul_vec(const float* A, const float* x, float* y, int n)
     y[idx] = sum;
 }
 
-__global__ void cuda_vector_norm(const float* x, float* norm, int n) {
-    __shared__ float temp[256];
-    int idx = threadIdx.x;
-    temp[idx] = 0.0f;
-
-    for (int i = idx; i < n; i += blockDim.x) {
-        temp[idx] += x[i] * x[i];
-    }
-
-    __syncthreads();
-    if (idx == 0) {
-        float sum = 0.0f;
-        for (int i = 0; i < blockDim.x; i++) sum += temp[i];
-        *norm = sqrtf(sum);
-    }
-}
-
-__global__ void cuda_normalize_vector(float* x, float norm, int n) {
+// CODE FOR EIGEN VALUES/VECTORS
+__global__ void cuda_matvec_mul(const float* matrix, const float* vector, float* result, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= n) return;
-
-    x[idx] /= norm;
+    if (idx < n) {
+        float sum = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            sum += matrix[idx * n + i] * vector[i];
+        }
+        result[idx] = sum;
+    }
 }
 
-void launch_cuda_eig(float* d_A, float* d_x, float* d_y, float* d_norm, float* h_eigenvalue, int n, int iterations) {
-    int threads = 256;
-    int blocks = (n + threads - 1) / threads;
-
-    for (int iter = 0; iter < iterations; iter++) {
-        cuda_matmul_vec<<<blocks, threads>>>(d_A, d_x, d_y, n);
-        cudaDeviceSynchronize(); // Ensure kernel completes
-
-        cuda_vector_norm<<<1, 256>>>(d_y, d_norm, n);
-        cudaDeviceSynchronize(); // Ensure kernel completes
-
-        cudaMemcpy(h_eigenvalue, d_norm, sizeof(float), cudaMemcpyDeviceToHost);
-        cudaDeviceSynchronize(); // Ensure memory copy completes
-
-        cuda_normalize_vector<<<blocks, threads>>>(d_y, *h_eigenvalue, n);
-        cudaDeviceSynchronize(); // Ensure kernel completes
-
-        cudaMemcpy(d_x, d_y, n * sizeof(float), cudaMemcpyDeviceToDevice);
-        cudaDeviceSynchronize(); // Ensure memory copy completes
+__global__ void cuda_normalize(float* vector, float* norm, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        float val = vector[idx] * vector[idx];
+        atomicAdd(norm, val);
     }
+    __syncthreads();
+    if (idx < n) {
+        vector[idx] /= sqrtf(*norm);
+    }
+}
+
+void launch_cuda_matvec_mul(const float* matrix, const float* vector, float* result, int n) {
+    dim3 threads(256);
+    dim3 blocks((n + threads.x - 1) / threads.x);
+
+    cuda_matvec_mul<<<blocks, threads>>>(matrix, vector, result, n);
 
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
     }
+    cudaDeviceSynchronize();  // Ensure kernel completes before proceeding
 }
+
+void launch_cuda_normalize(float* vector, float* norm, int n) {
+    dim3 threads(256);
+    dim3 blocks((n + threads.x - 1) / threads.x);
+
+    cudaMemset(norm, 0, sizeof(float));  // Reset norm to 0
+    cuda_normalize<<<blocks, threads>>>(vector, norm, n);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+    cudaDeviceSynchronize();  // Ensure kernel completes before proceeding
+}
+// END OF CODE FOR EIGEN VALUES/VECTORS
 
 void launch_cuda_svd(const float* d_A, float* d_U, float* d_S, float* d_VT, int m, int n) {
     cusolverDnHandle_t cusolverH;
