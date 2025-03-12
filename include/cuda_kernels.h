@@ -61,14 +61,14 @@ void launch_cuda_reshape(const float* input, float* output, size_t total_size);
 void launch_cuda_flatten(const float* input, float* output, size_t total_size);
 void launch_cuda_expand_dims(const float* input, float* output, size_t total_size);
 void launch_cuda_squeeze(const float* input, float* output, size_t total_size, size_t* new_shape, size_t* old_shape);
-void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis,
-                        const size_t* shape1, size_t shape1_size,
-                        const size_t* shape2, size_t shape2_size,
-                        const size_t* new_shape, size_t new_shape_size);
 void launch_cuda_stack(const float* input, float* output, size_t total_size, size_t* new_shape, 
                        size_t* old_shape, int axis, size_t tensor_size);
-void launch_cuda_permute(const float* input, float* output, size_t total_size, const size_t* new_shape, 
-                         const size_t* old_shape, const int* new_order);
+void launch_cuda_concat(const float* A, const float* B, float* result, size_t size1, 
+                        size_t size2, int axis, int dimA, int dimB);
+void launch_cuda_permute(const float* input, float* output, const int* shape, const int* new_order, 
+                         int num_dims, size_t size);
+void launch_cuda_repeat(const float* input, float* output, const int* input_shape, const int* output_shape, 
+                        int num_dims, int repeat_dim, size_t size);
 #endif
 
 #endif // CUDA_KERNELS_H

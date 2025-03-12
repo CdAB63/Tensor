@@ -1243,34 +1243,14 @@ Tensor Tensor::concat(const Tensor& other, int axis) const {
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        // Convert shapes to size_t vectors
-        std::vector<size_t> shape1_size_t(shape_.begin(), shape_.end());
-        std::vector<size_t> shape2_size_t(other.shape_.begin(), other.shape_.end());
-        std::vector<size_t> new_shape_size_t(new_shape.begin(), new_shape.end());
+        size_t size1 = 1;
+        for (int dim : shape_) size1 *= dim;
+        size_t size2 = 1;
+        for (int dim : other.shape_) size2 *= dim;
 
-        // Allocate device memory for shapes
-        size_t* d_shape1, *d_shape2, *d_new_shape;
-        cudaMalloc(&d_shape1, shape1_size_t.size() * sizeof(size_t));
-        cudaMalloc(&d_shape2, shape2_size_t.size() * sizeof(size_t));
-        cudaMalloc(&d_new_shape, new_shape_size_t.size() * sizeof(size_t));
-
-        // Copy shapes to device
-        cudaMemcpy(d_shape1, shape1_size_t.data(), shape1_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_shape2, shape2_size_t.data(), shape2_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_new_shape, new_shape_size_t.data(), new_shape_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
-
-        // Launch CUDA kernel with correct number of arguments
-        launch_cuda_concat(data_.get(), other.data_.get(), result.data_.get(), total_size, axis,
-                           d_shape1, shape1_size_t.size(),
-                           d_shape2, shape2_size_t.size(),
-                           d_new_shape, new_shape_size_t.size());
-
-        // Free device memory
-        cudaFree(d_shape1);
-        cudaFree(d_shape2);
-        cudaFree(d_new_shape);
+        launch_cuda_concat(data_.get(), other.data_.get(), result.data_.get(), size1, size2, axis, shape_[axis], other.shape_[axis]);
 #else
-            throw std::runtime_error("CUDA not available");
+        throw std::runtime_error("CUDA not available");
 #endif
     } else {
         // CPU concat: manually concatenate the two tensors along the axis
@@ -1361,28 +1341,60 @@ Tensor Tensor::permute(const std::vector<int>& new_order) const {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // If using GPU, launch the CUDA kernel
     if (use_gpu_) {
 #ifdef USE_CUDA
-        // Create temporary size_t copies of the shapes
-        std::vector<size_t> new_shape_size_t(new_shape.begin(), new_shape.end());
-        std::vector<size_t> shape_size_t(shape_.begin(), shape_.end());
+        // Copy shape and new_order to raw arrays
+        std::vector<int> shape_vec = shape_;
+        std::vector<int> new_order_vec = new_order;
 
-        // Launch the CUDA kernel for permute
-        launch_cuda_permute(
-            data_.get(), result.data_.get(),
-            size,
-            new_shape_size_t.data(),
-            shape_size_t.data(),
-            new_order.data()
-        );
+        // Allocate device memory for shape and new_order
+        int* d_shape;
+        int* d_new_order;
+        cudaMalloc(&d_shape, shape_vec.size() * sizeof(int));
+        cudaMalloc(&d_new_order, new_order_vec.size() * sizeof(int));
+        cudaMemcpy(d_shape, shape_vec.data(), shape_vec.size() * sizeof(int), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_new_order, new_order_vec.data(), new_order_vec.size() * sizeof(int), cudaMemcpyHostToDevice);
+
+        // Launch CUDA kernel for permutation
+        launch_cuda_permute(data_.get(), result.data_.get(), d_shape, d_new_order, shape_vec.size(), size);
+
+        // Free device memory
+        cudaFree(d_shape);
+        cudaFree(d_new_order);
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // For CPU, just copy the data and permute manually
+        // CPU implementation: copy data directly (no permutation needed for identity permutation)
         std::copy(data_.get(), data_.get() + size, result.data_.get());
     }
+
+    return result;
+}
+
+
+// Helper function to repeat
+Tensor Tensor::repeat_gpu(int axis, int repeats) const {
+    if (axis < 0 || axis >= shape_.size()) {
+        throw std::runtime_error("Invalid axis for repeat");
+    }
+
+    // Calculate the new shape
+    std::vector<int> new_shape = shape_;
+    new_shape[axis] *= repeats;
+
+    Tensor result(new_shape, use_gpu_);
+
+    // Calculate the size of the data
+    size_t size = 1;
+    for (int dim : new_shape) size *= dim;
+
+    // Copy shapes to raw arrays
+    std::vector<int> input_shape_vec = shape_;
+    std::vector<int> output_shape_vec = new_shape;
+
+    // Launch CUDA kernel for repeat
+    launch_cuda_repeat(data_.get(), result.data_.get(), input_shape_vec.data(), output_shape_vec.data(), shape_.size(), axis, size);
 
     return result;
 }
@@ -1434,14 +1446,30 @@ std::pair<Tensor, Tensor> Tensor::broadcast_tensors(const Tensor& A, const Tenso
     // Repeat data along new dimensions for A
     for (size_t i = 0; i < broadcasted_shape.size(); ++i) {
         if (A_broadcasted.shape()[i] == 1 && broadcasted_shape[i] > 1) {
-            A_broadcasted = A_broadcasted.repeat(i, broadcasted_shape[i]);
+            if (A_broadcasted.use_gpu()) {
+#ifdef USE_CUDA
+                A_broadcasted = A_broadcasted.repeat_gpu(i, broadcasted_shape[i]);
+#else
+                throw std::runtime_error("CUDA not available");
+#endif
+            } else {
+                A_broadcasted = A_broadcasted.repeat(i, broadcasted_shape[i]);
+            }
         }
     }
 
     // Repeat data along new dimensions for B
     for (size_t i = 0; i < broadcasted_shape.size(); ++i) {
         if (B_broadcasted.shape()[i] == 1 && broadcasted_shape[i] > 1) {
-            B_broadcasted = B_broadcasted.repeat(i, broadcasted_shape[i]);
+            if (B_broadcasted.use_gpu()) {
+#ifdef USE_CUDA
+                B_broadcasted = B_broadcasted.repeat_gpu(i, broadcasted_shape[i]);
+#else
+                throw std::runtime_error("CUDA not available");
+#endif
+            } else {
+                B_broadcasted = B_broadcasted.repeat(i, broadcasted_shape[i]);
+            }
         }
     }
 

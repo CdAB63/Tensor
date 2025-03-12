@@ -899,65 +899,6 @@ void launch_cuda_squeeze(const float* input, float* output, size_t total_size, s
     cuda_squeeze<<<blocks, threads>>>(input, output, total_size, new_shape, old_shape);
 }
 
-__global__ void cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, size_t* shape1, size_t* shape2, size_t* new_shape) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx >= total_size) return;
-
-    // Compute the stride for the concatenation axis
-    size_t stride = 1;
-    for (int i = axis + 1; i < new_shape[axis]; ++i) {
-        stride *= new_shape[i];
-    }
-
-    // Compute position along the concatenation axis
-    size_t pos_along_axis = (idx / stride) % new_shape[axis];
-
-    if (pos_along_axis < shape1[axis]) {
-        // Copy from input1
-        output[idx] = input1[idx];
-    } else {
-        // Copy from input2
-        size_t input2_offset = shape1[axis] * stride;
-        size_t input2_idx = idx - input2_offset;
-        output[idx] = input2[input2_idx];
-    }
-}
-
-void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, 
-    const size_t* shape1, size_t shape1_size, 
-    const size_t* shape2, size_t shape2_size, 
-    const size_t* new_shape, size_t new_shape_size) {
-
-int threads = 256;
-int blocks = (total_size + threads - 1) / threads;
-
-// Allocate device memory for shapes
-size_t* d_shape1, *d_shape2, *d_new_shape;
-cudaMalloc(&d_shape1, shape1_size * sizeof(size_t));
-cudaMalloc(&d_shape2, shape2_size * sizeof(size_t));
-cudaMalloc(&d_new_shape, new_shape_size * sizeof(size_t));
-
-// Copy shape data from host to device
-cudaMemcpy(d_shape1, shape1, shape1_size * sizeof(size_t), cudaMemcpyHostToDevice);
-cudaMemcpy(d_shape2, shape2, shape2_size * sizeof(size_t), cudaMemcpyHostToDevice);
-cudaMemcpy(d_new_shape, new_shape, new_shape_size * sizeof(size_t), cudaMemcpyHostToDevice);
-
-// Launch kernel
-cuda_concat<<<blocks, threads>>>(input1, input2, output, total_size, axis, d_shape1, d_shape2, d_new_shape);
-
-// Check for CUDA errors
-cudaError_t err = cudaGetLastError();
-if (err != cudaSuccess) {
-printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
-}
-cudaDeviceSynchronize();  // Ensure kernel completes before proceeding
-
-// Free GPU memory
-cudaFree(d_shape1);
-cudaFree(d_shape2);
-cudaFree(d_new_shape);
-}
-
 __global__ void cuda_stack(const float* input, float* output, size_t total_size, size_t* new_shape, size_t* old_shape, int axis, size_t tensor_size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     
@@ -981,32 +922,146 @@ void launch_cuda_stack(const float* input, float* output, size_t total_size, siz
     cuda_stack<<<blocks, threads>>>(input, output, total_size, new_shape, old_shape, axis, tensor_size);
 }
 
-__global__ void cuda_permute(const float* input, float* output, size_t total_size, const size_t* new_shape, const size_t* old_shape, const int* new_order) {
+__global__ void cuda_concat(const float* A, const float* B, float* result, size_t size1, size_t size2, int axis, int dimA, int dimB) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (idx < total_size) {
-        // Compute the corresponding indices for each dimension in the new order
-        //size_t new_idx = idx;
-        size_t input_idx = 0;
-
-        for (int i = 0; i < old_shape[0]; ++i) {  // Loop over the number of dimensions
-            int dim_idx = new_order[i];
-            //size_t dimension_size = old_shape[dim_idx];
-            size_t stride = 1;
-            for (int j = dim_idx + 1; j < old_shape[0]; ++j) {
-                stride *= old_shape[j];
-            }
-
-            size_t offset = idx / stride;
-            idx = idx % stride;
-            input_idx += offset * stride;
-        }
-        output[input_idx] = input[idx];
+    if (idx < size1) {
+        result[idx] = A[idx];
+    } else if (idx < size1 + size2) {
+        result[idx] = B[idx - size1];
     }
 }
 
-void launch_cuda_permute(const float* input, float* output, size_t total_size, const size_t* new_shape, const size_t* old_shape, const int* new_order) {
+void launch_cuda_concat(const float* d_A, const float* d_B, float* d_result, size_t size1, size_t size2, int axis, int dimA, int dimB) {
+    size_t total_size = size1 + size2;
     int threads = 256;
     int blocks = (total_size + threads - 1) / threads;
-    cuda_permute<<<blocks, threads>>>(input, output, total_size, new_shape, old_shape, new_order);
+
+    cuda_concat<<<blocks, threads>>>(d_A, d_B, d_result, size1, size2, axis, dimA, dimB);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+}
+
+__global__ void cuda_permute(const float* input, float* output, const int* shape, const int* new_order, int num_dims, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        // Calculate the original multi-dimensional index
+        int original_index = idx;
+        int original_coords[8]; // Assuming max 8 dimensions
+        for (int i = num_dims - 1; i >= 0; --i) {
+            original_coords[i] = original_index % shape[i];
+            original_index /= shape[i];
+        }
+
+        // Calculate the new index based on the new order
+        int new_index = 0;
+        int stride = 1;
+        for (int i = num_dims - 1; i >= 0; --i) {
+            new_index += original_coords[new_order[i]] * stride;
+            stride *= shape[new_order[i]];
+        }
+
+        // Copy the value to the new position
+        output[new_index] = input[idx];
+    }
+}
+
+void launch_cuda_permute(const float* d_input, float* d_output, const int* shape, const int* new_order, int num_dims, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+
+    // Launch kernel
+    cuda_permute<<<blocks, threads>>>(d_input, d_output, shape, new_order, num_dims, size);
+
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+}
+
+__global__ void cuda_repeat(const float* input, float* output, const int* input_shape, const int* output_shape, int num_dims, int repeat_dim, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < size) {
+        // Debugging: Print num_dims and output_shape
+        if (idx == 0) {
+            printf("num_dims: %d\n", num_dims);
+            printf("output_shape: ");
+            for (int i = 0; i < num_dims; ++i) {
+                printf("%d ", output_shape[i]);
+            }
+            printf("\n");
+        }
+
+        // Calculate the multi-dimensional index in the output tensor
+        int output_index = idx;
+        int output_coords[8]; // Assuming max 8 dimensions
+        for (int i = num_dims - 1; i >= 0; --i) {
+            output_coords[i] = output_index % output_shape[i];
+            output_index /= output_shape[i];
+        }
+
+        // Debugging: Print output_coords
+        if (idx == 0) {
+            printf("output_coords: ");
+            for (int i = 0; i < num_dims; ++i) {
+                printf("%d ", output_coords[i]);
+            }
+            printf("\n");
+        }
+
+        // Calculate the corresponding index in the input tensor
+        int input_index = 0;
+        int stride = 1;
+        for (int i = num_dims - 1; i >= 0; --i) {
+            if (i == repeat_dim) {
+                input_index += (output_coords[i] % input_shape[i]) * stride;
+            } else {
+                input_index += output_coords[i] * stride;
+            }
+            stride *= input_shape[i];
+        }
+
+        // Debugging: Print input_index
+        if (idx == 0) {
+            printf("input_index: %d\n", input_index);
+        }
+
+        // Copy the value from the input tensor to the output tensor
+        output[idx] = input[input_index];
+    }
+}
+
+void launch_cuda_repeat(const float* d_input, float* d_output, const int* input_shape, const int* output_shape, int num_dims, int repeat_dim, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+
+    // Allocate device memory for shapes
+    int* d_input_shape;
+    int* d_output_shape;
+    cudaMalloc(&d_input_shape, num_dims * sizeof(int));
+    cudaMalloc(&d_output_shape, num_dims * sizeof(int));
+    cudaMemcpy(d_input_shape, input_shape, num_dims * sizeof(int), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_output_shape, output_shape, num_dims * sizeof(int), cudaMemcpyHostToDevice);
+
+    // Launch kernel
+    cuda_repeat<<<blocks, threads>>>(d_input, d_output, d_input_shape, d_output_shape, num_dims, repeat_dim, size);
+
+    // Free device memory
+    cudaFree(d_input_shape);
+    cudaFree(d_output_shape);
+
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+
+    // Synchronize to catch any errors
+    cudaDeviceSynchronize();
 }

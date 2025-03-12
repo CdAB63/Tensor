@@ -65,6 +65,7 @@ public:
     Tensor concat(const Tensor& other, int axis) const;
     static Tensor stack(const std::vector<Tensor>& tensors, int axis);
     Tensor permute(const std::vector<int>& new_order) const;
+    Tensor repeat_gpu(int axis, int repeats) const;
     static std::vector<int> broadcast_shapes(const std::vector<int>& shape1, const std::vector<int>& shape2);
     static std::pair<Tensor, Tensor> broadcast_tensors(const Tensor& A, const Tensor& B);
     Tensor repeat(int axis, int repeats) const;
