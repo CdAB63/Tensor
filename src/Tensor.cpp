@@ -980,7 +980,18 @@ std::pair<float, Tensor> Tensor::eig() const {
 
     int n = shape_[0];
     Tensor eigenvector({n, 1}, use_gpu_);
-    std::fill(eigenvector.data(), eigenvector.data() + n, 1.0f);
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Use CUDA kernel to fill GPU memory with 1.0f
+        launch_cuda_fill(eigenvector.data(), 1.0f, n);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // Use std::fill for CPU memory
+        std::fill(eigenvector.data(), eigenvector.data() + n, 1.0f);
+    }
 
     float eigenvalue = 0.0f;
 
@@ -1232,14 +1243,34 @@ Tensor Tensor::concat(const Tensor& other, int axis) const {
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        // Convert shapes to size_t
+        // Convert shapes to size_t vectors
         std::vector<size_t> shape1_size_t(shape_.begin(), shape_.end());
         std::vector<size_t> shape2_size_t(other.shape_.begin(), other.shape_.end());
         std::vector<size_t> new_shape_size_t(new_shape.begin(), new_shape.end());
 
-        launch_cuda_concat(data_.get(), other.data_.get(), result.data_.get(), total_size, axis, shape1_size_t.data(), shape2_size_t.data(), new_shape_size_t.data());
+        // Allocate device memory for shapes
+        size_t* d_shape1, *d_shape2, *d_new_shape;
+        cudaMalloc(&d_shape1, shape1_size_t.size() * sizeof(size_t));
+        cudaMalloc(&d_shape2, shape2_size_t.size() * sizeof(size_t));
+        cudaMalloc(&d_new_shape, new_shape_size_t.size() * sizeof(size_t));
+
+        // Copy shapes to device
+        cudaMemcpy(d_shape1, shape1_size_t.data(), shape1_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_shape2, shape2_size_t.data(), shape2_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_new_shape, new_shape_size_t.data(), new_shape_size_t.size() * sizeof(size_t), cudaMemcpyHostToDevice);
+
+        // Launch CUDA kernel with correct number of arguments
+        launch_cuda_concat(data_.get(), other.data_.get(), result.data_.get(), total_size, axis,
+                           d_shape1, shape1_size_t.size(),
+                           d_shape2, shape2_size_t.size(),
+                           d_new_shape, new_shape_size_t.size());
+
+        // Free device memory
+        cudaFree(d_shape1);
+        cudaFree(d_shape2);
+        cudaFree(d_new_shape);
 #else
-        throw std::runtime_error("CUDA not available");
+            throw std::runtime_error("CUDA not available");
 #endif
     } else {
         // CPU concat: manually concatenate the two tensors along the axis

@@ -30,6 +30,12 @@ if(USE_CUDA)
     list(APPEND SOURCES src/cuda_kernels.cu)
 endif()
 
+# Add debug flags for CUDA and C++
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-G>)  # CUDA debug flag
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-g>)   # C++ debug flag
+endif()
+
 # Create the shared library
 add_library(TensorLibrary SHARED ${SOURCES})
 

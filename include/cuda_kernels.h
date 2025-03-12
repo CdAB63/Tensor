@@ -53,6 +53,7 @@ void launch_cuda_min(const float* d_A, float* d_result, int axis, int dim0, int 
 void launch_cuda_max(const float* d_A, float* d_result, int axis, int dim0, int dim1);
 void launch_cuda_transpose(const float* d_A, float* d_result, int rows, int cols);
 void launch_cuda_det(float* d_A, float* d_result, int n);
+void launch_cuda_fill(float* data, float value, int n); // for eigen
 void launch_cuda_matvec_mul(const float* matrix, const float* vector, float* result, int n); // for eigen
 void launch_cuda_normalize(float* vector, float* norm, int n); // for eigen
 void launch_cuda_svd(const float* d_A, float* d_U, float* d_S, float* d_VT, int m, int n);
@@ -60,8 +61,10 @@ void launch_cuda_reshape(const float* input, float* output, size_t total_size);
 void launch_cuda_flatten(const float* input, float* output, size_t total_size);
 void launch_cuda_expand_dims(const float* input, float* output, size_t total_size);
 void launch_cuda_squeeze(const float* input, float* output, size_t total_size, size_t* new_shape, size_t* old_shape);
-void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, 
-                        size_t* shape1, size_t* shape2, size_t* new_shape);
+void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis,
+                        const size_t* shape1, size_t shape1_size,
+                        const size_t* shape2, size_t shape2_size,
+                        const size_t* new_shape, size_t new_shape_size);
 void launch_cuda_stack(const float* input, float* output, size_t total_size, size_t* new_shape, 
                        size_t* old_shape, int axis, size_t tensor_size);
 void launch_cuda_permute(const float* input, float* output, size_t total_size, const size_t* new_shape, 

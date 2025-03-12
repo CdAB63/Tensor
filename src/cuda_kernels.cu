@@ -741,6 +741,27 @@ __global__ void cuda_matmul_vec(const float* A, const float* x, float* y, int n)
 }
 
 // CODE FOR EIGEN VALUES/VECTORS
+
+__global__ void cuda_fill(float* data, float value, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n) {
+        data[idx] = value;
+    }
+}
+
+void launch_cuda_fill(float* data, float value, int n) {
+    dim3 threads(256);
+    dim3 blocks((n + threads.x - 1) / threads.x);
+
+    cuda_fill<<<blocks, threads>>>(data, value, n);
+
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+    cudaDeviceSynchronize();  // Ensure kernel completes before proceeding
+}
+
 __global__ void cuda_matvec_mul(const float* matrix, const float* vector, float* result, int n) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < n) {
@@ -880,26 +901,61 @@ void launch_cuda_squeeze(const float* input, float* output, size_t total_size, s
 
 __global__ void cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, size_t* shape1, size_t* shape2, size_t* new_shape) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < total_size) {
-        // Compute the output index
-        size_t stride = 1;
-        //size_t axis_size = new_shape[axis];  // Get the axis size of the new shape
+    if (idx >= total_size) return;
 
-        // Determine the appropriate source tensor (input1 or input2)
-        if (idx < shape1[axis] * stride) {
-            // Copy data from input1
-            output[idx] = input1[idx];
-        } else {
-            // Copy data from input2
-            output[idx] = input2[idx - shape1[axis] * stride];
-        }
+    // Compute the stride for the concatenation axis
+    size_t stride = 1;
+    for (int i = axis + 1; i < new_shape[axis]; ++i) {
+        stride *= new_shape[i];
+    }
+
+    // Compute position along the concatenation axis
+    size_t pos_along_axis = (idx / stride) % new_shape[axis];
+
+    if (pos_along_axis < shape1[axis]) {
+        // Copy from input1
+        output[idx] = input1[idx];
+    } else {
+        // Copy from input2
+        size_t input2_offset = shape1[axis] * stride;
+        size_t input2_idx = idx - input2_offset;
+        output[idx] = input2[input2_idx];
     }
 }
 
-void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, size_t* shape1, size_t* shape2, size_t* new_shape) {
-    int threads = 256;
-    int blocks = (total_size + threads - 1) / threads;
-    cuda_concat<<<blocks, threads>>>(input1, input2, output, total_size, axis, shape1, shape2, new_shape);
+void launch_cuda_concat(const float* input1, const float* input2, float* output, size_t total_size, int axis, 
+    const size_t* shape1, size_t shape1_size, 
+    const size_t* shape2, size_t shape2_size, 
+    const size_t* new_shape, size_t new_shape_size) {
+
+int threads = 256;
+int blocks = (total_size + threads - 1) / threads;
+
+// Allocate device memory for shapes
+size_t* d_shape1, *d_shape2, *d_new_shape;
+cudaMalloc(&d_shape1, shape1_size * sizeof(size_t));
+cudaMalloc(&d_shape2, shape2_size * sizeof(size_t));
+cudaMalloc(&d_new_shape, new_shape_size * sizeof(size_t));
+
+// Copy shape data from host to device
+cudaMemcpy(d_shape1, shape1, shape1_size * sizeof(size_t), cudaMemcpyHostToDevice);
+cudaMemcpy(d_shape2, shape2, shape2_size * sizeof(size_t), cudaMemcpyHostToDevice);
+cudaMemcpy(d_new_shape, new_shape, new_shape_size * sizeof(size_t), cudaMemcpyHostToDevice);
+
+// Launch kernel
+cuda_concat<<<blocks, threads>>>(input1, input2, output, total_size, axis, d_shape1, d_shape2, d_new_shape);
+
+// Check for CUDA errors
+cudaError_t err = cudaGetLastError();
+if (err != cudaSuccess) {
+printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+}
+cudaDeviceSynchronize();  // Ensure kernel completes before proceeding
+
+// Free GPU memory
+cudaFree(d_shape1);
+cudaFree(d_shape2);
+cudaFree(d_new_shape);
 }
 
 __global__ void cuda_stack(const float* input, float* output, size_t total_size, size_t* new_shape, size_t* old_shape, int axis, size_t tensor_size) {
