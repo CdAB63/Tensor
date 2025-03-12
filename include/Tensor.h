@@ -78,7 +78,7 @@ public:
     Tensor avgpool(int kernel_size, int stride, bool padding) const;
     Tensor maxpool2d(int kernel_height, int kernel_width, int stride, bool padding) const;
     Tensor avgpool2d(int kernel_height, int kernel_width, int stride, bool padding) const;
-
+    
     // Accessors
     float* data() { return data_.get(); }
     const float* data() const { return data_.get(); }

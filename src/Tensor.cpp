@@ -987,20 +987,33 @@ std::pair<float, Tensor> Tensor::eig() const {
     if (use_gpu_) {
 #ifdef USE_CUDA
         float* d_A, * d_x, * d_y, * d_norm;
-        float h_eigenvalue;
+        float h_eigenvalue = 0.0f; // Initialize eigenvalue
 
-        cudaMalloc(&d_A, n * n * sizeof(float));
-        cudaMalloc(&d_x, n * sizeof(float));
-        cudaMalloc(&d_y, n * sizeof(float));
-        cudaMalloc(&d_norm, sizeof(float));
+        // Allocate device memory
+        cudaError_t err;
+        err = cudaMalloc(&d_A, n * n * sizeof(float));
+        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_A");
+        err = cudaMalloc(&d_x, n * sizeof(float));
+        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_x");
+        err = cudaMalloc(&d_y, n * sizeof(float));
+        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_y");
+        err = cudaMalloc(&d_norm, sizeof(float));
+        if (err != cudaSuccess) throw std::runtime_error("Failed to allocate d_norm");
 
-        cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(d_x, eigenvector.data(), n * sizeof(float), cudaMemcpyHostToDevice);
+        // Copy data to device
+        err = cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_A");
+        err = cudaMemcpy(d_x, eigenvector.data(), n * sizeof(float), cudaMemcpyHostToDevice);
+        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_x");
 
+        // Launch CUDA kernel
         launch_cuda_eig(d_A, d_x, d_y, d_norm, &h_eigenvalue, n, 100);
 
-        cudaMemcpy(eigenvector.data(), d_x, n * sizeof(float), cudaMemcpyDeviceToHost);
+        // Copy result back to host
+        err = cudaMemcpy(eigenvector.data(), d_x, n * sizeof(float), cudaMemcpyDeviceToHost);
+        if (err != cudaSuccess) throw std::runtime_error("Failed to copy d_x back to host");
 
+        // Free device memory
         cudaFree(d_A);
         cudaFree(d_x);
         cudaFree(d_y);
@@ -1198,9 +1211,11 @@ Tensor Tensor::concat(const Tensor& other, int axis) const {
         throw std::runtime_error("Invalid axis for concat");
     }
 
-    if (other.shape_ == shape_) {
-        // Handle error or define behavior for same shapes
-        throw std::runtime_error("Tensors must have compatible shapes");
+    // Check if shapes are compatible for concatenation
+    for (size_t i = 0; i < shape_.size(); ++i) {
+        if (i != axis && shape_[i] != other.shape_[i]) {
+            throw std::runtime_error("Tensors must have compatible shapes for concatenation");
+        }
     }
 
     // Calculate the new shape
@@ -1238,7 +1253,6 @@ Tensor Tensor::concat(const Tensor& other, int axis) const {
 
     return result;
 }
-
 
 Tensor Tensor::stack(const std::vector<Tensor>& tensors, int axis) {
     if (tensors.empty()) {

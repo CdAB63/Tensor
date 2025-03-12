@@ -210,44 +210,60 @@ int main(int argc, char* argv[]) {
     A1.load_data(A1_data);
 
     // Test sum along axis 1
+    std::cout << "***** TEST SUM *****\n";
     Tensor sum_result = A1.sum(1);
     print_tensor(sum_result, "Sum along axis 1");
 
     // Test mean along axis 1
+    std::cout << "***** TEST MEAN ALONG AXIS *****\n";
     Tensor mean_result = A1.mean(1);
     print_tensor(mean_result, "Mean along axis 1");
 
     // Test max along axis 1
+    std::cout << "***** TEST MAX ALONG AXIS *****\n";
     Tensor max_result = A1.max(1);
     print_tensor(max_result, "Max along axis 1");
 
     // Test min along axis 1
+    std::cout << "***** TEST MIN ALONG AXIS *****\n";
     Tensor min_result = A1.min(1);
     print_tensor(min_result, "Min along axis 1");
 
     // Test argmax along axis 1
+    std::cout << "***** TEST ARGMAX ALONG AXIS *****\n";
     Tensor argmax_result = A1.argmax(1);
     print_tensor(argmax_result, "Argmax along axis 1");
 
     // Test argmin along axis 1
+    std::cout << "***** TEST ARGMIN ALONG AXIS *****\n";
     Tensor argmin_result = A1.argmin(1);
     print_tensor(argmin_result, "Argmin along axis 1");
 
     Tensor A2({2, 2}, use_gpu);
     A2.load_data({4.0f, 1.0f, 2.0f, 3.0f});
 
+    // Test matmul
+    std::cout << "***** TEST MATMUL *****\n";
     Tensor B1 = A2.matmul(A2);
     print_tensor(B1, "A2 * A2");
 
+    // Test inv
+    std::cout << "***** TEST INV *****\n";
     Tensor invA = A2.inv();
     print_tensor(invA, "Inverse of A");
 
+    // Test transpose
+    std::cout << "***** TEST TRANSPOSE *****\n";
     Tensor transA = A2.transpose();
     print_tensor(transA, "Transpose of A");
 
+    // Test determinant
+    std::cout << "***** TEST DET *****\n";
     float detA = A2.det();
     std::cout << "Determinant of A: " << detA << "\n";
 
+    // Test eigen vector and eigen value
+    std::cout << "***** TEST EIG *****\n";
     auto [eigenvalue, eigenvector] = A2.eig();
     std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
     print_tensor(eigenvector, "Dominant eigenvector");
@@ -264,10 +280,12 @@ int main(int argc, char* argv[]) {
     E3.load_data(E3_data);
 
     // Perform dot product using einsum
+    std::cout << "***** TEST DOT EINSUM *****\n";
     Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
     print_tensor(F3, "Dot product using einsum");
 
     // Create a 2x3 tensor
+    std::cout << "***** TEST RESHAPE *****\n";
     Tensor A4({2, 3}, use_gpu); // Use GPU or CPU based on mode
     std::vector<float> A4_data(6);
     for (int i = 0; i < 6; ++i) A4_data[i] = static_cast<float>(i + 1);
@@ -279,14 +297,17 @@ int main(int argc, char* argv[]) {
     print_tensor(reshaped, "Reshaped Tensor A (3x2)");
 
     // Test flatten
+    std::cout << "***** TEST FLATTEN *****\n";
     Tensor flattened = A4.flatten();
     print_tensor(flattened, "Flattened Tensor A");
 
     // Test expand_dims
+    std::cout << "***** TEST EXPAND_DIMS *****\n";
     Tensor expanded = A4.expand_dims(1); // Add a dimension at axis 1
     print_tensor(expanded, "Expanded Tensor A (axis=1)");
 
     // Test squeeze
+    std::cout << "***** TEST SQUEEZE *****\n";
     Tensor squeezed = expanded.squeeze(); // Remove dimensions of size 1
     print_tensor(squeezed, "Squeezed Tensor (should match original A)");
 
@@ -298,14 +319,17 @@ int main(int argc, char* argv[]) {
     print_tensor(B4, "Tensor B");
 
     // Test concat
+    std::cout << "***** TEST CONCAT *****\n";
     Tensor concatenated = A4.concat(B4, 0); // Concatenate along axis 0
     print_tensor(concatenated, "Concatenated Tensor (A and B along axis 0)");
 
     // Test stack
+    std::cout << "***** TEST STACK *****\n";
     Tensor stacked = Tensor::stack({A4, B4}, 0); // Stack along axis 0
     print_tensor(stacked, "Stacked Tensor (A and B along axis 0)");
 
     // Test permute
+    std::cout << "***** TEST PERMUTE *****\n";
     Tensor permuted = A4.permute({1, 0}); // Swap dimensions
     print_tensor(permuted, "Permuted Tensor A (swapped dimensions)");
 
@@ -317,10 +341,12 @@ int main(int argc, char* argv[]) {
     print_tensor(C4, "Tensor C (1x3x1x2)");
 
     // Test squeeze on tensor with singleton dimensions
+    std::cout << "***** TEST SQUEEZE *****\n";
     Tensor squeezed_C = C4.squeeze();
     print_tensor(squeezed_C, "Squeezed Tensor C");
 
     // Test expand_dims on squeezed tensor
+    std::cout << "***** TEST EXPAND_DIMS *****\n";
     Tensor expanded_C = squeezed_C.expand_dims(1);
     print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
 
@@ -341,14 +367,17 @@ int main(int argc, char* argv[]) {
     print_tensor(B5, "Tensor B");
 
     // Test broadcasting
+    std::cout << "***** TEST BROADCAST_TENSORS *****\n";
     auto [A_broadcasted, B_broadcasted] = Tensor::broadcast_tensors(A5, B5);
     print_tensor(A_broadcasted, "Broadcasted Tensor A");
     print_tensor(B_broadcasted, "Broadcasted Tensor B");
 
     // Test element-wise comparison
+    std::cout << "***** TEST > *****\n";
     Tensor greater = A5 > B5;
     print_tensor(greater, "A > B");
 
+    std::cout << "***** TEST == *****\n";
     Tensor equal = A4 == B4;
     print_tensor(equal, "A == B");
 
@@ -362,6 +391,7 @@ int main(int argc, char* argv[]) {
     print_tensor(A6, "Original Tensor A");
 
     // Compare with a scalar
+    std::cout << "***** TEST MASK > float *****\n";
     Tensor mask = A6 > 3.0f;
     print_tensor(mask, "Mask (A > 3)");
 
@@ -371,6 +401,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < 3; ++i) B6_data[i] = static_cast<float>(i + 2);
     B6.load_data(B6_data);
 
+    std::cout << "***** TEST MASK A > B *****\n";
     Tensor mask2 = A6 > B6;
     print_tensor(mask2, "Mask (A > B)");
 
@@ -384,10 +415,12 @@ int main(int argc, char* argv[]) {
     print_tensor(inputmp, "Original Tensor");
 
     // Test max pooling
+    std::cout << "***** TEST MAXPOOL *****\n";
     Tensor max_pooled = inputmp.maxpool(2, 2, use_gpu);
     print_tensor(max_pooled, "Max Pooled Tensor");
 
     // Test average pooling
+    std::cout << "***** TEST AVGPOOL *****\n";
     Tensor avg_pooled = inputmp.avgpool(2, 2, use_gpu);
     print_tensor(avg_pooled, "Average Pooled Tensor");
 

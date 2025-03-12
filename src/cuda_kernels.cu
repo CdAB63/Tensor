@@ -770,10 +770,19 @@ void launch_cuda_eig(float* d_A, float* d_x, float* d_y, float* d_norm, float* h
 
     for (int iter = 0; iter < iterations; iter++) {
         cuda_matmul_vec<<<blocks, threads>>>(d_A, d_x, d_y, n);
+        cudaDeviceSynchronize(); // Ensure kernel completes
+
         cuda_vector_norm<<<1, 256>>>(d_y, d_norm, n);
+        cudaDeviceSynchronize(); // Ensure kernel completes
+
         cudaMemcpy(h_eigenvalue, d_norm, sizeof(float), cudaMemcpyDeviceToHost);
+        cudaDeviceSynchronize(); // Ensure memory copy completes
+
         cuda_normalize_vector<<<blocks, threads>>>(d_y, *h_eigenvalue, n);
+        cudaDeviceSynchronize(); // Ensure kernel completes
+
         cudaMemcpy(d_x, d_y, n * sizeof(float), cudaMemcpyDeviceToDevice);
+        cudaDeviceSynchronize(); // Ensure memory copy completes
     }
 
     cudaError_t err = cudaGetLastError();
