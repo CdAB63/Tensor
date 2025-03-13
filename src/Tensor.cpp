@@ -1591,7 +1591,6 @@ Tensor Tensor::operator[](const Tensor& mask) const {
     return result;
 }
 
-// Masked assignment
 Tensor& Tensor::operator=(const std::pair<Tensor, float>& masked_assignment) {
     const Tensor& mask = masked_assignment.first;
     float value = masked_assignment.second;
@@ -1604,10 +1603,19 @@ Tensor& Tensor::operator=(const std::pair<Tensor, float>& masked_assignment) {
     size_t size = 1;
     for (int dim : shape_) size *= dim;
 
-    // Set elements where the mask is true to the specified value
-    for (size_t i = 0; i < size; ++i) {
-        if (mask.data_.get()[i] != 0.0f) {
-            data_.get()[i] = value;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Launch CUDA kernel for masked assignment
+        launch_cuda_masked_assign(data_.get(), mask.data_.get(), value, size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation: set elements where the mask is true to the specified value
+        for (size_t i = 0; i < size; ++i) {
+            if (mask.data_.get()[i] != 0.0f) {
+                data_.get()[i] = value;
+            }
         }
     }
 

@@ -74,6 +74,7 @@ void launch_cuda_maxpool(const float* input, float* output, int batch_size, int 
                          int kernel_size, int stride, int pad, int output_length);
 void launch_cuda_avgpool(const float* input, float* output, int batch_size, int channels, int length, 
                          int kernel_size, int stride, int pad, int output_length);
+void launch_cuda_masked_assign(float* data, const float* mask, float value, size_t size);
 #endif
 
 #endif // CUDA_KERNELS_H

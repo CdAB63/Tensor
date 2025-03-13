@@ -1142,3 +1142,24 @@ void launch_cuda_avgpool(const float* input, float* output, int batch_size, int 
 
     cuda_avgpool<<<blocks, threads>>>(input, output, batch_size, channels, length, kernel_size, stride, pad, output_length);
 }
+
+// CUDA kernel for masked assignment
+__global__ void cuda_masked_assign(float* data, const float* mask, float value, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size && mask[idx] != 0.0f) {
+        data[idx] = value;
+    }
+}
+
+// Function to launch the CUDA kernel
+void launch_cuda_masked_assign(float* data, const float* mask, float value, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_masked_assign<<<blocks, threads>>>(data, mask, value, size);
+
+    // Check for errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+}

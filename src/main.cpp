@@ -503,6 +503,23 @@ int main(int argc, char* argv[]) {
     } else {
         std::cerr << "Test failed: Repeated Tensor (Axis 1, 1 Repeat) does not match original tensor!\n";
     }
-   
+
+    std::cout << "***** TEST MASKED ASSIGNMENT *****\n";
+    Tensor the_tensor({2, 3}, false); // CPU tensor
+    Tensor the_mask({2, 3}, false);   // CPU mask
+
+    // Initialize data
+    the_tensor.load_data({1, 2, 3, 4, 5, 6});
+    the_mask.load_data({0, 1, 0, 1, 0, 1});
+
+    // Perform masked assignment
+    the_tensor = {the_mask, 10.0f};
+
+    // Check the result
+    std::vector<float> expected = {1, 10, 3, 10, 5, 10};
+    assert(the_tensor.get_data() == expected);
+
+    std::cout << "Masked assignment test passed!" << std::endl;
+
     return 0;
 }
