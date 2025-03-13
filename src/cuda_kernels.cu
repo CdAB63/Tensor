@@ -1065,3 +1065,80 @@ void launch_cuda_repeat(const float* d_input, float* d_output, const int* input_
     // Synchronize to catch any errors
     cudaDeviceSynchronize();
 }
+
+__global__ void cuda_equal(const float* a, const float* b, float* result, size_t size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        result[idx] = (a[idx] == b[idx]) ? 1.0f : 0.0f;
+    }
+}
+
+void launch_cuda_equal(const float* a, const float* b, float* result, size_t size) {
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_equal<<<blocks, threads>>>(a, b, result, size);
+}
+
+__global__ void cuda_maxpool(const float* input, float* output, int batch_size, int channels, int length, int kernel_size, int stride, int pad, int output_length) {
+    int ol = blockIdx.x * blockDim.x + threadIdx.x; // Output position (1D)
+    int ch = blockIdx.y * blockDim.y + threadIdx.y; // Channel
+    int batch = blockIdx.z;                        // Batch
+
+    if (batch < batch_size && ch < channels && ol < output_length) {
+        float max_val = -FLT_MAX;
+
+        for (int ks = 0; ks < kernel_size; ++ks) {
+            int input_pos = ol * stride + ks - pad;
+
+            if (input_pos >= 0 && input_pos < length) {
+                float val = input[batch * channels * length + ch * length + input_pos];
+                if (val > max_val) {
+                    max_val = val;
+                }
+            }
+        }
+
+        output[batch * channels * output_length + ch * output_length + ol] = max_val;
+    }
+}
+
+void launch_cuda_maxpool(const float* input, float* output, int batch_size, int channels, int length, int kernel_size, int stride, int pad, int output_length) {
+    dim3 threads(16, 16); // 16x16 threads per block
+    dim3 blocks((output_length + threads.x - 1) / threads.x, 
+                (channels + threads.y - 1) / threads.y, 
+                batch_size);
+
+    cuda_maxpool<<<blocks, threads>>>(input, output, batch_size, channels, length, kernel_size, stride, pad, output_length);
+}
+
+__global__ void cuda_avgpool(const float* input, float* output, int batch_size, int channels, int length, int kernel_size, int stride, int pad, int output_length) {
+    int ol = blockIdx.x * blockDim.x + threadIdx.x; // Output position (1D)
+    int ch = blockIdx.y * blockDim.y + threadIdx.y; // Channel
+    int batch = blockIdx.z;                        // Batch
+
+    if (batch < batch_size && ch < channels && ol < output_length) {
+        float sum = 0.0f;
+        int count = 0;
+
+        for (int ks = 0; ks < kernel_size; ++ks) {
+            int input_pos = ol * stride + ks - pad;
+
+            if (input_pos >= 0 && input_pos < length) {
+                float val = input[batch * channels * length + ch * length + input_pos];
+                sum += val;
+                count++;
+            }
+        }
+
+        output[batch * channels * output_length + ch * output_length + ol] = sum / count;
+    }
+}
+
+void launch_cuda_avgpool(const float* input, float* output, int batch_size, int channels, int length, int kernel_size, int stride, int pad, int output_length) {
+    dim3 threads(16, 16); // 16x16 threads per block
+    dim3 blocks((output_length + threads.x - 1) / threads.x, 
+                (channels + threads.y - 1) / threads.y, 
+                batch_size);
+
+    cuda_avgpool<<<blocks, threads>>>(input, output, batch_size, channels, length, kernel_size, stride, pad, output_length);
+}

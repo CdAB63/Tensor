@@ -69,6 +69,11 @@ void launch_cuda_permute(const float* input, float* output, const int* shape, co
                          int num_dims, size_t size);
 void launch_cuda_repeat(const float* input, float* output, const int* input_shape, const int* output_shape, 
                         int num_dims, int repeat_dim, size_t size);
+void launch_cuda_equal(const float* a, const float* b, float* result, size_t size);
+void launch_cuda_maxpool(const float* input, float* output, int batch_size, int channels, int length, 
+                         int kernel_size, int stride, int pad, int output_length);
+void launch_cuda_avgpool(const float* input, float* output, int batch_size, int channels, int length, 
+                         int kernel_size, int stride, int pad, int output_length);
 #endif
 
 #endif // CUDA_KERNELS_H

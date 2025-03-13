@@ -1484,8 +1484,16 @@ Tensor Tensor::operator==(const Tensor& other) const {
     size_t size = 1;
     for (int dim : A_broadcasted.shape()) size *= dim;
 
-    for (size_t i = 0; i < size; ++i) {
-        result.data()[i] = (A_broadcasted.data()[i] == B_broadcasted.data()[i]) ? 1.0f : 0.0f;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_equal(A_broadcasted.data(), B_broadcasted.data(), result.data(), size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (size_t i = 0; i < size; ++i) {
+            result.data()[i] = (A_broadcasted.data()[i] == B_broadcasted.data()[i]) ? 1.0f : 0.0f;
+        }
     }
 
     return result;
@@ -1664,23 +1672,31 @@ Tensor Tensor::maxpool(int kernel_size, int stride, bool padding) const {
 
     Tensor output({batch_size, channels, output_length}, use_gpu_);
 
-    for (int batch = 0; batch < batch_size; ++batch) {
-        for (int ch = 0; ch < channels; ++ch) {
-            for (int ol = 0; ol < output_length; ++ol) {
-                float max_val = -std::numeric_limits<float>::max();
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_maxpool(data_.get(), output.data(), batch_size, channels, length, kernel_size, stride, pad, output_length);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (int batch = 0; batch < batch_size; ++batch) {
+            for (int ch = 0; ch < channels; ++ch) {
+                for (int ol = 0; ol < output_length; ++ol) {
+                    float max_val = -std::numeric_limits<float>::max();
 
-                for (int ks = 0; ks < kernel_size; ++ks) {
-                    int input_pos = ol * stride + ks - pad;
+                    for (int ks = 0; ks < kernel_size; ++ks) {
+                        int input_pos = ol * stride + ks - pad;
 
-                    if (input_pos >= 0 && input_pos < length) {
-                        float val = data_.get()[batch * channels * length + ch * length + input_pos];
-                        if (val > max_val) {
-                            max_val = val;
+                        if (input_pos >= 0 && input_pos < length) {
+                            float val = data_.get()[batch * channels * length + ch * length + input_pos];
+                            if (val > max_val) {
+                                max_val = val;
+                            }
                         }
                     }
-                }
 
-                output.data()[batch * channels * output_length + ch * output_length + ol] = max_val;
+                    output.data()[batch * channels * output_length + ch * output_length + ol] = max_val;
+                }
             }
         }
     }
@@ -1703,23 +1719,31 @@ Tensor Tensor::avgpool(int kernel_size, int stride, bool padding) const {
 
     Tensor output({batch_size, channels, output_length}, use_gpu_);
 
-    for (int batch = 0; batch < batch_size; ++batch) {
-        for (int ch = 0; ch < channels; ++ch) {
-            for (int ol = 0; ol < output_length; ++ol) {
-                float sum = 0.0f;
-                int count = 0;
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        launch_cuda_avgpool(data_.get(), output.data(), batch_size, channels, length, kernel_size, stride, pad, output_length);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        for (int batch = 0; batch < batch_size; ++batch) {
+            for (int ch = 0; ch < channels; ++ch) {
+                for (int ol = 0; ol < output_length; ++ol) {
+                    float sum = 0.0f;
+                    int count = 0;
 
-                for (int ks = 0; ks < kernel_size; ++ks) {
-                    int input_pos = ol * stride + ks - pad;
+                    for (int ks = 0; ks < kernel_size; ++ks) {
+                        int input_pos = ol * stride + ks - pad;
 
-                    if (input_pos >= 0 && input_pos < length) {
-                        float val = data_.get()[batch * channels * length + ch * length + input_pos];
-                        sum += val;
-                        count++;
+                        if (input_pos >= 0 && input_pos < length) {
+                            float val = data_.get()[batch * channels * length + ch * length + input_pos];
+                            sum += val;
+                            count++;
+                        }
                     }
-                }
 
-                output.data()[batch * channels * output_length + ch * output_length + ol] = sum / count;
+                    output.data()[batch * channels * output_length + ch * output_length + ol] = sum / count;
+                }
             }
         }
     }
