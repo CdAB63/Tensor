@@ -34,6 +34,26 @@ Tensor dot_product(const Tensor& A, const Tensor& B) {
     return result;
 }
 
+// Function to compare two tensors
+bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon = 1e-5) {
+    // Check if shapes match
+    if (tensor1.shape() != tensor2.shape()) {
+        std::cerr << "Shape mismatch!\n";
+        return false;
+    }
+
+    // Check if data matches (with epsilon tolerance for floating-point comparison)
+    for (size_t i = 0; i < tensor1.size(); ++i) {
+        if (std::abs(tensor1.data()[i] - tensor2.data()[i]) > epsilon) {
+            std::cerr << "Data mismatch at index " << i << ": "
+                      << tensor1.data()[i] << " != " << tensor2.data()[i] << "\n";
+            return false;
+        }
+    }
+
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -424,5 +444,65 @@ int main(int argc, char* argv[]) {
     Tensor avg_pooled = inputmp.avgpool(2, 2, use_gpu);
     print_tensor(avg_pooled, "Average Pooled Tensor");
 
+    // TESTING REPEAT
+    std::cout << "***** TEST REPEAT *****\n";
+    // Create a sample tensor
+    std::cout << "***** TEST REPEAT CREATING A SAMPLE TENSOR *****\n";
+    std::vector<int> shape = {2, 3}; // 2x3 tensor
+    Tensor A7(shape, false); // Use CPU
+    float data[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    std::copy(data, data + 6, A7.data()); // Fill tensor with data
+
+    // Print ori ginal tensor
+    print_tensor(A7, "Original Tensor A");
+
+    // Test Tensor::repeat along axis 0 with 2 repeats
+    std::cout << "***** TEST REPEAT ALONG AXIS 0 (2 REPEATS) *****\n";
+    Tensor A_repeated_axis0 = A7.repeat(0, 2);
+    print_tensor(A_repeated_axis0, "Repeated Tensor (Axis 0)");
+
+    // Expected result for axis 0 repeat
+    Tensor expected_axis0({4, 3}, false);
+    float expected_data_axis0[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
+                                   1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    std::copy(expected_data_axis0, expected_data_axis0 + 12, expected_axis0.data());
+
+    // Verify result
+    if (compare_tensors(A_repeated_axis0, expected_axis0)) {
+        std::cout << "Test passed: Repeated Tensor (Axis 0) matches expected result!\n";
+    } else {
+        std::cerr << "Test failed: Repeated Tensor (Axis 0) does not match expected result!\n";
+    }
+
+    // Test Tensor::repeat along axis 1 with 3 repeats
+    std::cout << "\n***** TEST REPEAT ALONG AXIS 1 (3 REPEATS) *****\n";
+    Tensor A_repeated_axis1 = A7.repeat(1, 3);
+    print_tensor(A_repeated_axis1, "Repeated Tensor (Axis 1)");
+
+    // Expected result for axis 1 repeat
+    Tensor expected_axis1({2, 9}, false);
+    float expected_data_axis1[] = {1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f,
+                                   4.0f, 5.0f, 6.0f, 4.0f, 5.0f, 6.0f, 4.0f, 5.0f, 6.0f};
+    std::copy(expected_data_axis1, expected_data_axis1 + 18, expected_axis1.data());
+
+    // Verify result
+    if (compare_tensors(A_repeated_axis1, expected_axis1)) {
+        std::cout << "Test passed: Repeated Tensor (Axis 1) matches expected result!\n";
+    } else {
+        std::cerr << "Test failed: Repeated Tensor (Axis 1) does not match expected result!\n";
+    }
+
+    // Test Tensor::repeat along axis 1 with 1 repeat (no change)
+    std::cout << "\n***** TEST REPEAT ALONG AXIS 1 (1 REPEAT) *****\n";
+    Tensor A_repeated_axis1_nochange = A7.repeat(1, 1);
+    print_tensor(A_repeated_axis1_nochange, "Repeated Tensor (Axis 1, 1 Repeat)");
+
+    // Verify result
+    if (compare_tensors(A_repeated_axis1_nochange, A7)) {
+        std::cout << "Test passed: Repeated Tensor (Axis 1, 1 Repeat) matches original tensor!\n";
+    } else {
+        std::cerr << "Test failed: Repeated Tensor (Axis 1, 1 Repeat) does not match original tensor!\n";
+    }
+   
     return 0;
 }

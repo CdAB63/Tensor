@@ -1514,23 +1514,46 @@ Tensor Tensor::repeat(int axis, int repeats) const {
 
     Tensor result(new_shape, use_gpu_);
 
-    // Compute strides
-    size_t stride = 1;
-    for (int i = axis + 1; i < shape_.size(); ++i) {
-        stride *= shape_[i];
-    }
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        // Calculate the size of the data
+        size_t size = 1;
+        for (int dim : new_shape) size *= dim;
 
-    // Repeat data along the specified axis
-    size_t input_offset = 0;
-    size_t output_offset = 0;
+        // Copy shapes to raw arrays
+        std::vector<int> input_shape_vec = shape_;
+        std::vector<int> output_shape_vec = new_shape;
 
-    for (int i = 0; i < shape_[axis]; ++i) {
-        for (int r = 0; r < repeats; ++r) {
-            std::copy(data_.get() + input_offset, data_.get() + input_offset + stride,
-                      result.data_.get() + output_offset);
-            output_offset += stride;
+        // Launch CUDA kernel for repeat
+        launch_cuda_repeat(data_.get(), result.data_.get(), input_shape_vec.data(), output_shape_vec.data(), shape_.size(), axis, size);
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        // CPU implementation: repeat data along the specified axis
+        size_t outer_size = 1;
+        for (int i = 0; i < axis; ++i) {
+            outer_size *= shape_[i];
         }
-        input_offset += stride;
+
+        size_t inner_size = 1;
+        for (int i = axis + 1; i < shape_.size(); ++i) {
+            inner_size *= shape_[i];
+        }
+
+        size_t axis_size = shape_[axis];
+
+        for (size_t outer = 0; outer < outer_size; ++outer) {
+            for (size_t r = 0; r < repeats; ++r) {
+                for (size_t a = 0; a < axis_size; ++a) {
+                    for (size_t inner = 0; inner < inner_size; ++inner) {
+                        size_t input_idx = outer * axis_size * inner_size + a * inner_size + inner;
+                        size_t output_idx = outer * repeats * axis_size * inner_size + r * axis_size * inner_size + a * inner_size + inner;
+                        result.data()[output_idx] = data_.get()[input_idx];
+                    }
+                }
+            }
+        }
     }
 
     return result;
