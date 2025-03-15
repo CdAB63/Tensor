@@ -54,6 +54,111 @@ bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon
     return true;
 }
 
+// TEST DOT PRODUCT <VECTOR>
+bool test_dot(bool use_gpu) {
+    std::cout << "Creating tensors A and B\n";
+    Tensor A({4}, use_gpu); // Use GPU or CPU based on mode
+    Tensor B({4}, use_gpu); // Use GPU or CPU based on mode
+    std::cout << "Tensors A and B created\n";
+    // Load data into tensors
+    std::cout << "Loading data into tensor A\n";
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
+    std::cout << "Loading data into tensor B\n";
+    B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
+    // Print initial tensors
+    print_tensor(A, "Tensor A");
+    print_tensor(B, "Tensor B");
+    // Test dot product
+    std::cout << "***** TESTING DOT PRODUCT *****\n";
+    float dot_result = A.dot(B);
+    std::cout << "Dot product: " << dot_result << "\n";
+    if (dot_result != 20.0f) {
+        std::cerr << "ERROR: result should be 20 but is " << dot_result << "\n\n";
+        return false;
+    } else {
+        std::cout << "Dot product tested OK" << std::endl << std::endl;
+    }
+
+    return true;
+}
+
+// TEST D = A + B
+bool test_a_plus_b(bool use_gpu) {
+    std::cout << "***** TESTING ADD *****\n";
+    Tensor A({2,2}, use_gpu); // Use GPU or CPU based on mode
+    Tensor B({2,2}, use_gpu); // Use GPU or CPU based on mode
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
+    B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
+    // test D = A + B
+    std::cout << "***** TESTING ADD *****\n";
+    Tensor THE_ADD = A.add(B);
+    print_tensor(THE_ADD, "D = A + B");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {5.0, 5.0, 5.0, 5.0};
+    if (THE_ADD.shape() == expected_shape && THE_ADD.get_data() == expected_data) {
+        std::cout << "D = A + B tested OK" << std::endl;
+    } else {
+        std::cerr << "D = A + B tested NOK" << std::endl;
+        print_tensor(A, "Tensor A");
+        print_tensor(B, "Tensor B");
+        print_tensor(THE_ADD, "THE_ADD (the sum)");
+        std::cerr << "Shape sould be {2, 2} and data {5, 5, 5, 5}";
+        return false;
+    }
+    return true;
+}
+
+// TEST D = A - B
+bool test_a_minus_b(bool use_gpu) {
+    std::cout << "***** TESTING ADD *****\n";
+    Tensor A({2,2}, use_gpu); // Use GPU or CPU based on mode
+    Tensor B({2,2}, use_gpu); // Use GPU or CPU based on mode
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
+    B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
+    // test D = A + B
+    std::cout << "***** TESTING ADD *****\n";
+    Tensor SUBTRACT = A.subtract(B);
+    print_tensor(SUBTRACT, "D = A + B");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {-3.0, -1.0, 1.0, 3.0};
+    if (SUBTRACT.shape() == expected_shape && SUBTRACT.get_data() == expected_data) {
+        std::cout << "D = A - B tested OK" << std::endl;
+    } else {
+        std::cerr << "D = A - B tested NOK" << std::endl;
+        print_tensor(A, "Tensor A");
+        print_tensor(B, "Tensor B");
+        print_tensor(SUBTRACT, "SUBTRACT (the sum)");
+        std::cerr << "Shape sould be {2, 2} and data {-3, -1, 1, 3}" << std::endl;
+        return false;
+    }
+    return true;  
+}
+
+// Test scalled add
+bool test_scaled_add(bool use_gpu) {
+    std::cout << "***** TESTING ADD_SCALED *****\n";
+    Tensor A({2}, use_gpu);
+    Tensor B({2}, use_gpu);
+    A.load_data({1, 2});
+    B.load_data({2, 1});
+    int alpha = 0.5f;
+    Tensor D = A.add_scaled(B, alpha);
+    print_tensor(D, "D = A + 0.5 * B");
+    std::vector<int> expected_shape = {2};
+    std::vector<float> expected_result = {2.0, 2,5};
+    if (D.shape() == expected_shape && D.get_data() == expected_result) {
+        std::cout << "D = A + 0.5 * B tested OK" << std::endl;
+    } else {
+        std::cerr << "D = A + 0.5 * B tested NOK" << std::endl;
+        print_tensor(A,"Tensor A");
+        print_tensor(B,"Tensor B");
+        print_tensor(D,"Tensor D");
+        std::cerr << "Shape should be {2} and data {2.0, 2.5}" << std::endl;
+        return false;
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -73,73 +178,34 @@ int main(int argc, char* argv[]) {
         std::cout << "No argument provided. Defaulting to CPU mode.\n";
     }
 
-    // Create two tensors (2x2)
-    std::cout << "Creating tensors A and B\n";
-    try {
-        Tensor A({2, 2}, use_gpu); // Use GPU or CPU based on mode
-        Tensor B({2, 2}, use_gpu); // Use GPU or CPU based on mode
-        std::cout << "Tensors A and B created successfully\n";
-
-        // Load data into tensors
-        std::cout << "Loading data into tensor A\n";
-        A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
-
-        std::cout << "Loading data into tensor B\n";
-        B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
-
-        // Perform operations on tensors
-        Tensor C = A.add(B);
-        std::cout << "Addition successful\n";
-
-        // Retrieve data from tensor C
-        std::vector<float> result = C.get_data();
-        std::cout << "Result tensor C (A + B): ";
-        for (float val : result) {
-            std::cout << val << " ";
-        }
-        std::cout << "\n";
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+    if (!test_dot(use_gpu)) {
+        std::cerr << "ERROR test_dot failed\n";
+        return false;
     }
-    std::cout << "OK\n";
-
-    std::cout << "Creating tensors A and B\n";
-    Tensor A({2, 2}, use_gpu); // Use GPU or CPU based on mode
-    Tensor B({2, 2}, use_gpu); // Use GPU or CPU based on mode
-    std::cout << "Tensors A and B created\n";
-    // Load data into tensors
-    std::cout << "Loading data into tensor A\n";
-    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
-    std::cout << "Loading data into tensor B\n";
-    B.load_data({5.0f, 6.0f, 7.0f, 8.0f});
-    // Print initial tensors
-    print_tensor(A, "Tensor A");
-    print_tensor(B, "Tensor B");
-
-    // Test dot product
-    std::cout << "***** TESTING DOT PRODUCT *****\n";
-    float dot_result = A.dot(B);
-    std::cout << "Dot product: " << dot_result << "\n\n";
 
     // Test add: D = A + B
-    std::cout << "***** TESTING ADD *****\n";
-    Tensor THE_ADD = A.add(B);
-    print_tensor(THE_ADD, "D = A + B");
+    if (!test_a_plus_b(use_gpu)) {
+        std::cerr << "ERROR test_a_plus_b failed\n";
+        return false;
+    }
 
     // Test subtraction: D = A - B
-    std::cout << "***** TESTING SUBTRACT *****\n";
-    Tensor D = A.subtract(B);
-    print_tensor(D, "D = A - B");
+    if (!test_a_minus_b(use_gpu)) {
+        std::cerr << "ERROR test_a_minus_b failed\n";
+        return false;
+    }
 
-    // Test scaled addition: E = A + 2.5 * B
-    std::cout << "***** TESTING ADD_SCALED *****\n";
-    int alpha = 2.5f;
-    Tensor E = A.add_scaled(B, alpha);
-    print_tensor(E, "E = A + 2.5 * B");
+    // Test scaled add c = a + x*b
+    if (!test_scaled_add(use_gpu)) {
+        std::cerr<< "ERROR test_scaled_add failed\n";
+        return false;
+    }
 
     // Test element-wise multiplication: F = A * B
+    Tensor A({2}, use_gpu);
+    Tensor B({2}, use_gpu);
+    A.load_data({1.0, 2.0});
+    B.load_data({2.0, 1.0});
     std::cout << "***** TESTING MULTIPLY *****\n";
     Tensor F = A.multiply(B);
     print_tensor(F, "F = A * B");

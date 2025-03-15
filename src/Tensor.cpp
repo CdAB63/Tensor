@@ -106,6 +106,10 @@ Tensor Tensor::add(const Tensor& other) const {
 }
 
 float Tensor::dot(const Tensor& other) const {
+    if (shape_.size() != 1 || other.shape_.size() != 1) {
+        std::cerr << "Error: Tensor::dot() was defined for vectors, otherwise it is matmul" << std::endl;
+        throw std::runtime_error("Shape mismatch");
+    }
     if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
 
     float result = 0.0f;
@@ -463,7 +467,7 @@ Tensor Tensor::add_scaled(const Tensor& other, float alpha) const {
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_add(data_.get(), other.data_.get(), result.data_.get(), size);
+        launch_cuda_add_scaled(data_.get(), other.data_.get(), alpha, result.data_.get(), size);
 #else
         throw std::runtime_error("CUDA not available");
 #endif
