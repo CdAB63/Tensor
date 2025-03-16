@@ -454,7 +454,7 @@ Tensor Tensor::subtract(const Tensor& other) const {
             result.data()[i] = data_.get()[i] - other.data_.get()[i];
         }
     }
-
+    std::cerr << "Result D = A - B is: (" << result.data()[0] << ", " << result.data()[1] << ")" << std::endl;
     return result;
 }
 
@@ -472,9 +472,17 @@ Tensor Tensor::add_scaled(const Tensor& other, float alpha) const {
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        for (size_t i = 0; i < size; ++i) {
-            result.data()[i] = data_.get()[i] + alpha * other.data_.get()[i];
-        }
+        float* a = data_.get();
+        std::vector<float>A(a, a + size);
+        float* b = other.data_.get();
+        std::vector<float>B(b, b + size);
+        float c[size];
+        std::vector<float>C(c, c + size);
+        std::transform(A.begin(), A.end(), B.begin(), C.begin(),
+                   [alpha](float a_elem, float b_elem) {
+                       return a_elem + alpha * b_elem;
+                   });
+        result.load_data(C);
     }
 
     return result;

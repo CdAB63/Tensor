@@ -89,19 +89,17 @@ bool test_a_plus_b(bool use_gpu) {
     Tensor B({2,2}, use_gpu); // Use GPU or CPU based on mode
     A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
     B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
-    // test D = A + B
-    std::cout << "***** TESTING ADD *****\n";
     Tensor THE_ADD = A.add(B);
     print_tensor(THE_ADD, "D = A + B");
     std::vector<int> expected_shape = {2, 2};
     std::vector<float> expected_data = {5.0, 5.0, 5.0, 5.0};
     if (THE_ADD.shape() == expected_shape && THE_ADD.get_data() == expected_data) {
-        std::cout << "D = A + B tested OK" << std::endl;
+        std::cout << "D = A + B tested OK" << "\n\n";
     } else {
-        std::cerr << "D = A + B tested NOK" << std::endl;
+        std::cerr << "D = A + B tested NOK" << "\n";
         print_tensor(A, "Tensor A");
         print_tensor(B, "Tensor B");
-        print_tensor(THE_ADD, "THE_ADD (the sum)");
+        print_tensor(THE_ADD, "THE_ADD (the sum) ");
         std::cerr << "Shape sould be {2, 2} and data {5, 5, 5, 5}";
         return false;
     }
@@ -110,24 +108,22 @@ bool test_a_plus_b(bool use_gpu) {
 
 // TEST D = A - B
 bool test_a_minus_b(bool use_gpu) {
-    std::cout << "***** TESTING ADD *****\n";
+    std::cout << "***** TESTING SUBRACT *****\n";
     Tensor A({2,2}, use_gpu); // Use GPU or CPU based on mode
     Tensor B({2,2}, use_gpu); // Use GPU or CPU based on mode
     A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
     B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
-    // test D = A + B
-    std::cout << "***** TESTING ADD *****\n";
     Tensor SUBTRACT = A.subtract(B);
     print_tensor(SUBTRACT, "D = A + B");
     std::vector<int> expected_shape = {2, 2};
     std::vector<float> expected_data = {-3.0, -1.0, 1.0, 3.0};
     if (SUBTRACT.shape() == expected_shape && SUBTRACT.get_data() == expected_data) {
-        std::cout << "D = A - B tested OK" << std::endl;
+        std::cout << "D = A - B tested OK" << "\n\n";
     } else {
-        std::cerr << "D = A - B tested NOK" << std::endl;
+        std::cerr << "D = A - B tested NOK" << "\n";
         print_tensor(A, "Tensor A");
         print_tensor(B, "Tensor B");
-        print_tensor(SUBTRACT, "SUBTRACT (the sum)");
+        print_tensor(SUBTRACT, "SUBTRACT ");
         std::cerr << "Shape sould be {2, 2} and data {-3, -1, 1, 3}" << std::endl;
         return false;
     }
@@ -136,27 +132,27 @@ bool test_a_minus_b(bool use_gpu) {
 
 // Test scalled add
 bool test_scaled_add(bool use_gpu) {
-    std::cout << "***** TESTING ADD_SCALED *****\n";
-    Tensor A({2}, use_gpu);
-    Tensor B({2}, use_gpu);
-    A.load_data({1, 2});
-    B.load_data({2, 1});
-    int alpha = 0.5f;
-    Tensor D = A.add_scaled(B, alpha);
-    print_tensor(D, "D = A + 0.5 * B");
-    std::vector<int> expected_shape = {2};
-    std::vector<float> expected_result = {2.0, 2,5};
-    if (D.shape() == expected_shape && D.get_data() == expected_result) {
-        std::cout << "D = A + 0.5 * B tested OK" << std::endl;
+    std::cout << "***** TESTING D = A + alpha * B *****\n";
+    Tensor A({2,2}, use_gpu); // Use GPU or CPU based on mode
+    Tensor B({2,2}, use_gpu); // Use GPU or CPU based on mode
+    float alpha = 0.5;
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f});
+    B.load_data({4.0f, 3.0f, 2.0f, 1.0f});
+    Tensor SCALLED_ADD = A.add_scaled(B, alpha);
+    print_tensor(SCALLED_ADD, "D = A + B");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {3.0, 3.5, 4.0, 4.5};
+    if (SCALLED_ADD.shape() == expected_shape && SCALLED_ADD.get_data() == expected_data) {
+        std::cout << "D = A + alpha * B tested OK" << "\n\n";
     } else {
-        std::cerr << "D = A + 0.5 * B tested NOK" << std::endl;
-        print_tensor(A,"Tensor A");
-        print_tensor(B,"Tensor B");
-        print_tensor(D,"Tensor D");
-        std::cerr << "Shape should be {2} and data {2.0, 2.5}" << std::endl;
+        std::cerr << "D = A + alpha * B tested NOK" << "\n";
+        print_tensor(A, "Tensor A");
+        print_tensor(B, "Tensor B");
+        print_tensor(SCALLED_ADD, "SCALLED_ADD ");
+        std::cerr << "Shape sould be {2, 2} and data {-3, -1, 1, 3}" << std::endl;
         return false;
     }
-    return true;
+    return true;  
 }
 
 int main(int argc, char* argv[]) {
