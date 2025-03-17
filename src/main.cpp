@@ -350,6 +350,32 @@ bool test_sum_along_axis(bool use_gpu) {
     }
 }
 
+bool test_mean_along_axis(bool use_gpu) {
+    std::cout << "***** TEST MEAN ALONG AXIS *****\n";
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(24);
+    for (int i = 0; i < 24; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+
+    Tensor mean_result = A1.mean(1);
+    print_tensor(mean_result, "Mean along axis 1");
+
+    std::vector<int> expected_shape = {2, 4};
+    std::vector<float> expected_result = {
+        4.0f, 5.0f, 6.0f, 7.0f,
+        16.0f, 17.0f, 18.0f, 19.0f
+    };
+
+    if (mean_result.shape() == expected_shape && mean_result.get_data() == expected_result) {
+        std::cout << "mean tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "mean result tested NOK\n";
+        print_tensor(mean_result, "MEAN RESULT");
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -447,16 +473,17 @@ int main(int argc, char* argv[]) {
     }
 
 
+    // Test mean along axis
+    if (!test_mean_along_axis(use_gpu)) {
+        std::cerr << "ERROR test_mean_along_axis failed\n";
+        return false;
+    }
+
     // Create a tensor (2x3x4)
     Tensor A1({2, 3, 4}, use_gpu);
     std::vector<float> A1_data(2 * 3 * 4);
     for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test mean along axis 1
-    std::cout << "***** TEST MEAN ALONG AXIS *****\n";
-    Tensor mean_result = A1.mean(1);
-    print_tensor(mean_result, "Mean along axis 1");
 
     // Test max along axis 1
     std::cout << "***** TEST MAX ALONG AXIS *****\n";

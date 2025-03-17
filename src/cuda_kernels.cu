@@ -289,7 +289,7 @@ void launch_cuda_sum(const float* input, float* output, int axis, size_t stride,
 __global__ void cuda_mean(float* data, size_t size, float axis_size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
-        data[idx] /= axis_size;
+        data[idx] /= axis_size; // ACTUALLY DIVIDE HERE
     }
 }
 
@@ -297,6 +297,13 @@ void launch_cuda_mean(float* data, size_t size, float axis_size) {
     int threads = 256;
     int blocks = (size + threads - 1) / threads;
     cuda_mean<<<blocks, threads>>>(data, size, axis_size);
+    
+    // Check for CUDA errors
+    cudaError_t err = cudaGetLastError();
+    if (err != cudaSuccess) {
+        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    }
+    cudaDeviceSynchronize(); // Ensure kernel completes
 }
 
 __global__ void cuda_matmul(const float* A, const float* B, float* C, int m, int n, int p) {

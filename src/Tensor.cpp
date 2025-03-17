@@ -596,20 +596,24 @@ Tensor Tensor::mean(int axis) const {
     Tensor sum_result = sum(axis);
     size_t axis_size = shape_[axis];
 
-    // Divide by the size of the axis to compute the mean
     size_t size = 1;
-
     for (int dim : sum_result.shape()) size *= dim;
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_mean(data_.get(), axis_size, size);
+        // Correct data pointer and parameter order
+        launch_cuda_mean(
+            sum_result.data_.get(), 
+            size, 
+            static_cast<float>(axis_size) // Ensure float division
+        );
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        for (size_t i = 0; i < size; ++i)
+        for (size_t i = 0; i < size; ++i) {
             sum_result.data()[i] /= axis_size;
+        }
     }
     
     return sum_result;
