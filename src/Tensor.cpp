@@ -570,13 +570,18 @@ Tensor Tensor::sum(int axis) const {
     for (int i = axis + 1; i < shape_.size(); ++i) {
         stride *= shape_[i];
     }
+
     if (use_gpu_) {
 #ifdef USE_CUDA
+        // Initialize result data to zero
+        cudaMemset(result.data_.get(), 0, result.size() * sizeof(float));
         launch_cuda_sum(data_.get(), result.data_.get(), axis, stride, shape_[axis], size);
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
+        // Initialize result data to zero
+        std::fill(result.data_.get(), result.data_.get() + result.size(), 0.0f);
         // Perform sum along the axis
         for (size_t i = 0; i < size; ++i) {
             size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);

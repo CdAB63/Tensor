@@ -270,7 +270,86 @@ bool test_conv1d(bool use_gpu) {
     }
     return true;
 }
-    
+
+// Test conv2d
+bool test_conv2d(bool use_gpu) {
+    std::cout << "***** TESTING 2D CONVOLUTION *****\n";
+    // Create an input tensor (5x5 image with 3 channels)
+    Tensor input2d({5, 5, 3}, use_gpu);
+    std::vector<float> input2d_data(5 * 5 * 3);
+    for (int i = 0; i < 5 * 5 * 3; ++i) input2d_data[i] = static_cast<float>(i) / 10.0f;
+    input2d.load_data(input2d_data);
+    // Create a kernel (3x3 kernel with 3 input channels and 2 filters)
+    Tensor kernel2d({3, 3, 3, 2}, use_gpu);
+    std::vector<float> kernel2d_data(3 * 3 * 3 * 2);
+    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel2d_data[i] = static_cast<float>(i) / 10.0f;
+    kernel2d.load_data(kernel2d_data);
+    // Perform convolution with stride 1 and padding
+    Tensor output2d = input2d.conv2d(kernel2d, 1, true);
+    // Print output shape
+    std::cout << "Convolution output shape: " << output2d.shape()[0] << "x" << output2d.shape()[1] << "x" << output2d.shape()[2] << "\n\n";
+    print_tensor(output2d, "2D Convolution Output");
+    std::vector<int> expected_shape = {5, 5, 2};
+    if (output2d.shape() == expected_shape) {
+        std::cout << "conv2d = input2d.conv2d() tested OK\n\n";
+    } else {
+        std::cerr << "conv2d = input2d.conv2d() tested NOK\n";
+        return false;
+    }
+    return true;
+}
+
+// Test conv3d
+bool test_conv3d(bool use_gpu) {
+    std::cout << "***** TESTING 3D CONVOLUTION *****\n";
+    // Create a 3D input tensor (batch_size=1, in_channels=1, depth=3, height=3, width=3)
+    Tensor input3d({1, 1, 3, 3, 3}, use_gpu);
+    std::vector<float> input3d_data(27);
+    for (int i = 0; i < 27; ++i) input3d_data[i] = static_cast<float>(i + 1);
+    input3d.load_data(input3d_data);
+    // Create a 3D kernel (kernel_depth=2, kernel_height=2, kernel_width=2, in_channels=1, out_channels=1)
+    Tensor kernel3d({2, 2, 2, 1, 1}, use_gpu);
+    std::vector<float> kernel3d_data(8);
+    for (int i = 0; i < 8; ++i) kernel3d_data[i] = static_cast<float>(i + 1);
+    kernel3d.load_data(kernel3d_data);
+    // Perform 3D convolution
+    Tensor output3d = input3d.conv3d(kernel3d, 1, true);
+    print_tensor(output3d, "3D Convolution Output");
+    std::vector<int> expected_shape = {1, 1, 2, 2, 2};
+    if (output3d.shape() == expected_shape) {
+        std::cout << "conv3d = input3d.conv3d() tested OK\n\n";
+    } else {
+        std::cerr << "conv3d = input3d.conv3d() tested NOK\n";
+        return false;
+    }
+    return true;
+}
+
+// Test sum along axis
+bool test_sum_along_axis(bool use_gpu) {
+    std::cout << "***** TEST SUM ALONG AXIS *****\n";
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+    print_tensor(A1, "Input data");
+    // Test sum along axis 1
+    Tensor sum_result = A1.sum(1);
+    print_tensor(sum_result, "Sum along axis 1");
+    // Correct expected shape and data
+    std::vector<int> expected_shape = {2, 4};
+    std::vector<float> expected_result = {12, 15, 18, 21, 48, 51, 54, 57};
+    if (sum_result.shape() == expected_shape && sum_result.get_data() == expected_result) {
+        std::cout << "sum_result = A1.sum() tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "sum_result = A1.sum() tested NOK\n";
+        print_tensor(sum_result, "SUM RESULT");
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -343,68 +422,36 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create an input tensor (5x5 image with 3 channels)
-    Tensor input2d({5, 5, 3}, use_gpu);
-    std::vector<float> input2d_data(5 * 5 * 3);
-    for (int i = 0; i < 5 * 5 * 3; ++i) input2d_data[i] = static_cast<float>(i) / 10.0f;
-    input2d.load_data(input2d_data);
-
-    // Create a kernel (3x3 kernel with 3 input channels and 2 filters)
-    Tensor kernel2d({3, 3, 3, 2}, use_gpu);
-    std::vector<float> kernel2d_data(3 * 3 * 3 * 2);
-    for (int i = 0; i < 3 * 3 * 3 * 2; ++i) kernel2d_data[i] = static_cast<float>(i) / 10.0f;
-    kernel2d.load_data(kernel2d_data);
-
-    // Perform convolution with stride 1 and padding
-    Tensor output2d = input2d.conv2d(kernel2d, 1, true);
-
-    // Print output shape
-    std::cout << "Convolution output shape: " << output2d.shape()[0] << "x" << output2d.shape()[1] << "x" << output2d.shape()[2] << "\n\n";
-    print_tensor(output2d, "2D Convolution Output");
-
-    // Create a 3D input tensor (batch_size=1, in_channels=1, depth=3, height=3, width=3)
-    Tensor input3d({1, 1, 3, 3, 3}, use_gpu);
-    std::vector<float> input3d_data(27);
-    for (int i = 0; i < 27; ++i) input3d_data[i] = static_cast<float>(i + 1);
-    input3d.load_data(input3d_data);
-
-    // Create a 3D kernel (kernel_depth=2, kernel_height=2, kernel_width=2, in_channels=1, out_channels=1)
-    Tensor kernel3d({2, 2, 2, 1, 1}, use_gpu);
-    std::vector<float> kernel3d_data(8);
-    for (int i = 0; i < 8; ++i) kernel3d_data[i] = static_cast<float>(i + 1);
-    kernel3d.load_data(kernel3d_data);
-
-    // Perform 3D convolution
-    Tensor output3d = input3d.conv3d(kernel3d, 1, true);
-    print_tensor(output3d, "3D Convolution Output");
-
-    // Create a tensor (2x2x2)
-    Tensor input1({2, 2, 2}, use_gpu);
-    std::vector<float> input1_data(8);
-    for (int i = 0; i < 8; ++i) input1_data[i] = static_cast<float>(i + 1);
-    input1.load_data(input1_data);
-
-    // Perform power operation
-    Tensor result = input1.power(2.0f);
-
-    // Print result
-    std::cout << "Power operation result (2x2x2 tensor):\n";
-    std::vector<float> result_data = result.get_data();
-    for (float val : result_data) {
-        std::cout << val << " ";
+    // Test 2D convolution
+    if (!test_conv2d(use_gpu)) {
+        std::cerr << "ERROR test_conv2d failed\n";
+        return false;
     }
-    std::cout << "\n";
+
+    // Test 3D convolution
+    if (!test_conv3d(use_gpu)) {
+        std::cerr << "ERROR test_conv3d failed\n";
+        return false;
+    }
+
+    // Test power
+    if (!test_power(use_gpu)) {
+        std::cerr << "ERROR test_power failed\n";
+        return false;
+    }
+
+    // Test sum along axis 1
+    if (!test_sum_along_axis(use_gpu)) {
+        std::cerr << "ERROR test_sum_along_axis failed\n";
+        return false;
+    }
+
 
     // Create a tensor (2x3x4)
     Tensor A1({2, 3, 4}, use_gpu);
     std::vector<float> A1_data(2 * 3 * 4);
     for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test sum along axis 1
-    std::cout << "***** TEST SUM *****\n";
-    Tensor sum_result = A1.sum(1);
-    print_tensor(sum_result, "Sum along axis 1");
 
     // Test mean along axis 1
     std::cout << "***** TEST MEAN ALONG AXIS *****\n";
