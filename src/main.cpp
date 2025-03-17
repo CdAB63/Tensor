@@ -155,6 +155,122 @@ bool test_scaled_add(bool use_gpu) {
     return true;  
 }
 
+// Test multiply
+bool test_multiply(bool use_gpu) {
+    std::cout << "***** TESTING MULTIPLY *****\n";
+    Tensor A({2, 2}, use_gpu);
+    Tensor B({2, 2}, use_gpu);
+    A.load_data({1.0, 2.0, 3.0, 4.0});
+    B.load_data({4.0, 3.0, 2.0, 1.0});
+    Tensor D = A.multiply(B);
+    print_tensor(D, "F = A * B");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {4.0, 6.0, 6.0, 4.0};
+    if (D.shape() == expected_shape && D.get_data() == expected_data) {
+        std::cout << "D = A * B tested OK" << "\n\n";
+    } else { 
+        std::cerr << "D = A * B teste NOK" << "\n";
+        print_tensor(A, "Tensor A");
+        print_tensor(B, "Tensor B");
+        print_tensor(D, "Tensor D");
+        std::cerr << "Shape should be (2, 2) and data (4.0, 6.0, 6.0, 4.0)\n";
+        return false;
+    }
+    return true;
+}
+
+// Test divide
+bool test_divide(bool use_gpu) {
+    std::cout << "***** TESTING DIVIDE *****\n";
+    Tensor A({2, 2}, use_gpu);
+    Tensor B({2, 2}, use_gpu);
+    A.load_data({1.0, 3.0, 3.0, 4.0});
+    B.load_data({4.0, 3.0, 2.0, 1.0});
+    Tensor D = A.divide(B);
+    print_tensor(D, "F = A / B");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {0.25, 1.0, 1.5, 4.0};
+    if (D.shape() == expected_shape && D.get_data() == expected_data) {
+        std::cout << "D = A / B tested OK" << "\n\n";
+    } else { 
+        std::cerr << "D = A / B teste NOK" << "\n";
+        print_tensor(A, "Tensor A");
+        print_tensor(B, "Tensor B");
+        print_tensor(D, "Tensor D");
+        std::cerr << "Shape should be (2, 2) and data (0.25, 1.0, 1.5, 4.0)\n";
+        return false;
+    }
+    return true;
+}
+
+bool test_multiply_scalar(bool use_gpu) {
+    std::cout << "***** TESTING MULTIPLY SCALAR *****\n";
+    Tensor A({2,2}, use_gpu);
+    A.load_data({1.0, 2.0, 3.0, 4.0});
+    Tensor C = A.multiply_scalar(2.5);
+    print_tensor(C, "C = 2.5 * A");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_data = {2.5, 5.0, 7.5, 10.0};
+    if (C.shape() == expected_shape && C.get_data() == expected_data) {
+        std::cout << "C = 2.5 * A tested OK\n\n";
+    } else {
+        std::cerr << "C = 2.5 * A tested NOK\n";
+        print_tensor(A, "Tensor A");
+        print_tensor(C, "Tensor C");
+        std::cerr << "Shape should be {2, 2} and data {2.5, 5.0, 7.5, 10.0}\n";
+        return false;
+    }
+    return true;
+}
+
+// Test power
+bool test_power(bool use_gpu) {
+    std::cout << "***** TESTING POWER OPERATION *****\n";
+    Tensor A({2,2}, use_gpu);
+    A.load_data({1.0, 2.0, 3.0, 4.0});
+    Tensor C = A.power(2);
+    print_tensor(C, "C = A.power(2)");
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_result = {1.0, 4.0, 9.0, 16.0};
+    if (C.shape() == expected_shape && C.get_data() == expected_result) {
+        std::cout << "C = A.power(2) tested OK\n\n";
+    } else {
+        std::cerr << "C = A.power(2) tested NOK\n";
+        print_tensor(A, "Tensor A");
+        print_tensor(C, "Tensor C");
+        std::cerr << "Shape should be (2, 2) and data (1, 4, 9, 16)\n";
+        return false;
+    }
+    return true;
+}
+
+// Test conv1d
+bool test_conv1d(bool use_gpu) {
+    std::cout << "***** TESTING 1D CONVOLUTION *****\n";
+    // Create a 1D input tensor (batch_size=1, in_channels=1, length=5)
+    Tensor input1d({1, 1, 10}, use_gpu);
+    input1d.load_data({1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0});
+    // Create a 1D kernel (kernel_size=3, in_channels=1, out_channels=1)
+    Tensor kernel1d({3, 1, 1}, use_gpu);
+    kernel1d.load_data({1.0f, 2.0f, 3.0f});
+    // Perform 1D convolution
+    Tensor output1d = input1d.conv1d(kernel1d, 1, true);
+    print_tensor(output1d, "1D Convolution Output");
+    std::vector<int> expected_shape = {1, 1, 10};
+    std::vector<float> expected_result = {8, 14, 20, 26, 32, 38, 44, 50, 56, 29};
+    if (output1d.shape() == expected_shape && output1d.get_data() == expected_result) {
+        std::cout << "C = A.conv1d() tested OK\n\n";
+    } else {
+        std::cerr << "C = A.conv1d() tested NOK\n";
+        print_tensor(input1d, "The vector");
+        print_tensor(kernel1d, "The kernel");
+        print_tensor(output1d, "The convolution");
+        std::cerr << "Shape shoud be (1, 1, 8) and data (8, 14, 20, 26,32, 38, 44, 50, 56, 29)\n";
+        return false;
+    }
+    return true;
+}
+    
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -198,40 +314,34 @@ int main(int argc, char* argv[]) {
     }
 
     // Test element-wise multiplication: F = A * B
-    Tensor A({2}, use_gpu);
-    Tensor B({2}, use_gpu);
-    A.load_data({1.0, 2.0});
-    B.load_data({2.0, 1.0});
-    std::cout << "***** TESTING MULTIPLY *****\n";
-    Tensor F = A.multiply(B);
-    print_tensor(F, "F = A * B");
+    if (!test_multiply(use_gpu)) {
+        std::cerr << "ERROR test_multiply failed\n";
+        return false;
+    }
 
     // Test element-wise division: G = A / B
-    std::cout << "***** TESTING DIVIDE *****\n";
-    Tensor G = A.divide(B);
-    print_tensor(G, "G = A / B");
+    if (!test_divide(use_gpu)) {
+        std::cerr << "ERROR test_divide failed\n";
+        return false;
+    }
 
-    // Test scalar multiplication: H = 3.0 * A
-    std::cout << "***** TESTING MULTIPLY_SCALAR *****\n";
-    Tensor H = A.multiply_scalar(3.0f);
-    print_tensor(H, "H = 3.0 * A");
+    // Test scalar multiplication: D = alpha * A
+    if (!test_multiply_scalar(use_gpu)) {
+        std::cerr << "ERROR test_multiply_scalar failed\n";
+        return false;
+    }
 
-    // Test power operation: I = A^2
-    std::cout << "***** TESTING POWER *****\n";
-    Tensor I = A.power(2.0f);
-    print_tensor(I, "I = A^2");
+    // Test power operation
+    if (!test_power(use_gpu)) {
+        std::cerr << "ERROR test_power failed\n";
+        return false;
+    }
 
-    // Create a 1D input tensor (batch_size=1, in_channels=1, length=5)
-    Tensor input1d({1, 1, 5}, use_gpu);
-    input1d.load_data({1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
-    // Create a 1D kernel (kernel_size=3, in_channels=1, out_channels=1)
-    Tensor kernel1d({3, 1, 1}, use_gpu);
-    kernel1d.load_data({1.0f, 2.0f, 3.0f});
-
-    // Perform 1D convolution
-    std::cout << "***** TESTING 1D CONVOLUTION *****\n";
-    Tensor output1d = input1d.conv1d(kernel1d, 1, true);
-    print_tensor(output1d, "1D Convolution Output");
+    // Test 1D convolution
+    if (!test_conv1d(use_gpu)) {
+        std::cerr << "ERROR test_connv1d failed\n";
+        return false;
+    }
 
     // Create an input tensor (5x5 image with 3 channels)
     Tensor input2d({5, 5, 3}, use_gpu);

@@ -1,19 +1,6 @@
 #include "cuda_kernels.h"
 #include <stdio.h>
 
-__global__ void cuda_scalled_add(const float* a, const float* b, float alpha, float* result, size_t size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        result[idx] = a[idx] + alpha * b[idx];
-    }
-}
-
-void launch_cuda_scalled_add(const float* a, const float* b, float alpha, float* result, size_t size) {
-    int threads = 256;
-    int blocks = (size + threads - 1) / threads;
-    cuda_scalled_add<<<blocks, threads>>>(a, b, alpha, result, size);
-}
-
 __global__ void cuda_dot(const float* a, const float* b, float* result, size_t size) {
     extern __shared__ float shared_mem[];
     int tid = threadIdx.x;

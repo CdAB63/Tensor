@@ -454,7 +454,6 @@ Tensor Tensor::subtract(const Tensor& other) const {
             result.data()[i] = data_.get()[i] - other.data_.get()[i];
         }
     }
-    std::cerr << "Result D = A - B is: (" << result.data()[0] << ", " << result.data()[1] << ")" << std::endl;
     return result;
 }
 
