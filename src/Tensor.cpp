@@ -619,34 +619,46 @@ Tensor Tensor::mean(int axis) const {
     return sum_result;
 }
 
+float Tensor::max() const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float result;
+        launch_cuda_max(data_.get(), &result, this->size());
+        return result;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        return *std::max_element(data_.get(), data_.get() + this->size());
+    }
+}
+
 Tensor Tensor::max(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
         throw std::runtime_error("Invalid axis");
     }
 
-    // Calculate output shape
     std::vector<int> output_shape = shape_;
     output_shape.erase(output_shape.begin() + axis);
-
     Tensor result(output_shape, use_gpu_);
-    size_t size = 1;
-    for (int dim : shape_) size *= dim;
 
     // Calculate dimensions
-    int dim0 = shape_[0];  
-    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
+    size_t outer_dim = 1;
+    for (int i = 0; i < axis; ++i) outer_dim *= shape_[i];
+    size_t axis_size = shape_[axis];
+    size_t inner_stride = 1;
+    for (int i = axis + 1; i < shape_.size(); ++i) inner_stride *= shape_[i];
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_max(data_.get(), result.data(), axis, dim0, dim1);
+        launch_cuda_max_axis(data_.get(), result.data(), outer_dim, axis_size, inner_stride);
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // Initialize result with the smallest possible float value
-        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], -std::numeric_limits<float>::max());
-
-        // Perform max along the axis
+        // CPU-based max along the specified axis
+        std::fill(result.data(), result.data() + result.size(), -std::numeric_limits<float>::max());
+        size_t size = this->size();
         size_t stride = 1;
         for (int i = axis + 1; i < shape_.size(); ++i) {
             stride *= shape_[i];
@@ -657,53 +669,92 @@ Tensor Tensor::max(int axis) const {
             result.data()[output_idx] = std::max(result.data()[output_idx], data_.get()[i]);
         }
     }
-
     return result;
 }
 
+// Scalar version: Finds the minimum value in the tensor
+//float Tensor::min() const {
+//    if (use_gpu_) {
+//#ifdef USE_CUDA
+//        float result;
+//        launch_cuda_min(data_.get(), &result, this->size());
+//        return result;
+//#else
+//        throw std::runtime_error("CUDA not available");
+//#endif
+//    } else {
+//        // CPU-based computation
+//        return *std::min_element(data_.get(), data_.get() + this->size());
+//    }
+//}
+float Tensor::min() const {
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        float result;
+        launch_cuda_min(data_.get(), &result, this->size());
+        return result;
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        return *std::min_element(data_.get(), data_.get() + this->size());
+    }
+}
 
+// Finds the minimum value along a specified axis
 Tensor Tensor::min(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
         throw std::runtime_error("Invalid axis");
     }
 
-    // Calculate output shape
     std::vector<int> output_shape = shape_;
     output_shape.erase(output_shape.begin() + axis);
-
     Tensor result(output_shape, use_gpu_);
-    size_t size = 1;
-    for (int dim : shape_) size *= dim;
 
-    // Calculate dimensions
-    int dim0 = shape_[0];  
-    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
+    size_t outer_dim = 1;
+    for (int i = 0; i < axis; ++i) outer_dim *= shape_[i];
+    
+    size_t axis_size = shape_[axis];
+    size_t inner_stride = 1;
+    for (int i = axis + 1; i < shape_.size(); ++i) 
+        inner_stride *= shape_[i];
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_min(data_.get(), result.data(), axis, dim0, dim1);
+        launch_cuda_min_axis(
+            data_.get(),
+            result.data(),
+            outer_dim,
+            axis_size,
+            inner_stride
+        );
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // Initialize result with the largest possible float value
-        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], std::numeric_limits<float>::max());
-
-        // Perform min along the axis
-        size_t stride = 1;
-        for (int i = axis + 1; i < shape_.size(); ++i) {
-            stride *= shape_[i];
-        }
-
-        for (size_t i = 0; i < size; ++i) {
-            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-            result.data()[output_idx] = std::min(result.data()[output_idx], data_.get()[i]);
+        // CPU implementation
+        const float* input = data_.get();
+        float* output = result.data_.get();
+            
+        for (size_t outer = 0; outer < outer_dim; ++outer) {
+            for (size_t inner = 0; inner < inner_stride; ++inner) {
+                float min_val = FLT_MAX;
+                    
+                for (size_t a = 0; a < axis_size; ++a) {
+                    size_t input_idx = outer * axis_size * inner_stride 
+                                     + a * inner_stride 
+                                     + inner;
+                    min_val = std::min(min_val, input[input_idx]);
+                }
+                    
+                size_t output_idx = outer * inner_stride + inner;
+                output[output_idx] = min_val;
+            }
         }
     }
 
     return result;
 }
-
 
 Tensor Tensor::argmax(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
@@ -751,7 +802,6 @@ Tensor Tensor::argmax(int axis) const {
 
     return result;
 }
-
 
 Tensor Tensor::argmin(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {

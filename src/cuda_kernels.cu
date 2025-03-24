@@ -1,6 +1,16 @@
 #include "cuda_kernels.h"
 #include <stdio.h>
 
+__device__ float atomicMinFloat(float* address, float value) {
+    float old = *address, assumed;
+    do {
+        assumed = old;
+        if (assumed <= value) break;  // Early exit if we already have a smaller value
+        old = atomicCAS((int*)address, __float_as_int(assumed), __float_as_int(value));
+    } while (assumed != old);  // Keep looping until the atomic swap was successful
+    return old;
+}
+
 __global__ void cuda_dot(const float* a, const float* b, float* result, size_t size) {
     extern __shared__ float shared_mem[];
     int tid = threadIdx.x;
@@ -498,77 +508,144 @@ void launch_cuda_inv(float* d_A, float* d_I, int size) {
     }
 }
 
-__global__ void cuda_min(const float* A, float* result, int axis, int dim0, int dim1) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void cuda_max(const float* data, float* result, size_t size) {
+    extern __shared__ float shared_mem[];
+    int tid = threadIdx.x;
+    int idx = blockIdx.x * blockDim.x + tid;
 
-    if (axis == 0) { // Min along rows
-        if (idx >= dim1) return;
+    shared_mem[tid] = (idx < size) ? data[idx] : -FLT_MAX;
+    __syncthreads();
 
-        float min_val = A[idx];  // Start with first row value
-        for (int i = 1; i < dim0; i++) {
-            min_val = fminf(min_val, A[i * dim1 + idx]);
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        if (tid < s && (idx + s) < size) {
+            shared_mem[tid] = max(shared_mem[tid], shared_mem[tid + s]);
         }
-        result[idx] = min_val;
-    } 
-    else if (axis == 1) { // Min along columns
-        if (idx >= dim0) return;
+        __syncthreads();
+    }
 
-        float min_val = A[idx * dim1];  // Start with first column value
-        for (int j = 1; j < dim1; j++) {
-            min_val = fminf(min_val, A[idx * dim1 + j]);
-        }
-        result[idx] = min_val;
+    if (tid == 0) {
+        atomicMax((int*)result, __float_as_int(shared_mem[0]));
     }
 }
 
-void launch_cuda_min(const float* d_A, float* d_result, int axis, int dim0, int dim1) {
+void launch_cuda_max(const float* data, float* result, size_t size) {
     int threads = 256;
-    int blocks = (axis == 0) ? (dim1 + threads - 1) / threads : (dim0 + threads - 1) / threads;
+    int blocks = (size + threads - 1) / threads;
 
-    cuda_min<<<blocks, threads>>>(d_A, d_result, axis, dim0, dim1);
+    float* d_result;
+    cudaMalloc(&d_result, sizeof(float));
+    float min_value = -FLT_MAX;
+    cudaMemcpy(d_result, &min_value, sizeof(float), cudaMemcpyHostToDevice);
 
+    cuda_max<<<blocks, threads, threads * sizeof(float)>>>(data, d_result, size);
+
+    cudaMemcpy(result, d_result, sizeof(float), cudaMemcpyDeviceToHost);
+
+    cudaFree(d_result);
+}
+
+__global__ void cuda_max_axis(const float* data, float* result, size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (tid >= outer_dim * inner_stride) return;
+
+    size_t outer_idx = tid / inner_stride;
+    size_t inner_idx = tid % inner_stride;
+
+    float max_val = -FLT_MAX;
+
+    for (size_t i = 0; i < axis_size; ++i) {
+        size_t idx = outer_idx * axis_size * inner_stride + i * inner_stride + inner_idx;
+        max_val = fmaxf(max_val, data[idx]);
+    }
+
+    result[tid] = max_val;
+}
+
+void launch_cuda_max_axis(const float* data, float* result, size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    size_t total_threads = outer_dim * inner_stride;
+    int threads = 256;
+    int blocks = (total_threads + threads - 1) / threads;
+
+    cuda_max_axis<<<blocks, threads>>>(data, result, outer_dim, axis_size, inner_stride);
+}
+
+__global__ void cuda_min(const float* d_A, float* d_result, size_t size) {
+    __shared__ float shared_min[256];
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    int local_tid = threadIdx.x;
+
+    float local_min = FLT_MAX;
+    while (tid < size) {
+        local_min = fminf(local_min, d_A[tid]);
+        tid += blockDim.x * gridDim.x;
+    }
+
+    shared_min[local_tid] = local_min;
+    __syncthreads();
+
+    // Reduce within a block
+    for (int stride = blockDim.x / 2; stride > 0; stride /= 2) {
+        if (local_tid < stride) {
+            shared_min[local_tid] = fminf(shared_min[local_tid], shared_min[local_tid + stride]);
+        }
+        __syncthreads();
+    }
+
+    if (local_tid == 0) {
+        atomicMinFloat(d_result, shared_min[0]);  // Atomically reduce across blocks
+    }
+}
+
+void launch_cuda_min(const float* d_A, float* h_result, size_t size) {
+    float* d_result;
+    cudaMalloc(&d_result, sizeof(float));
+    float initial_min = FLT_MAX;
+    cudaMemcpy(d_result, &initial_min, sizeof(float), cudaMemcpyHostToDevice);
+
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    cuda_min<<<blocks, threads>>>(d_A, d_result, size);
+
+    cudaMemcpy(h_result, d_result, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(d_result);
+}
+
+__global__ void cuda_min_axis(const float* input, float* output, size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    if (tid >= outer_dim * inner_stride) return;
+
+    const size_t outer_idx = tid / inner_stride;
+    const size_t inner_idx = tid % inner_stride;
+
+    float min_val = INFINITY;  // Start with maximum possible value
+    
+    for (size_t a = 0; a < axis_size; ++a) {
+        const size_t input_idx = outer_idx * axis_size * inner_stride 
+                               + a * inner_stride 
+                               + inner_idx;
+        min_val = fminf(min_val, input[input_idx]);
+    }
+    
+    output[tid] = min_val;
+}
+
+void launch_cuda_min_axis(const float* input, float* output, size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    const size_t total_elements = outer_dim * inner_stride;
+    const int threads = 256;
+    const int blocks = (total_elements + threads - 1) / threads;
+
+    // Kernel handles initialization internally
+    cuda_min_axis<<<blocks, threads>>>(input, output, outer_dim, axis_size, inner_stride);
+    
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
-        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+        throw std::runtime_error(
+            std::string("CUDA min_axis failed: ") + cudaGetErrorString(err)
+        );
     }
-}
-
-#include <stdio.h>
-#include <limits>
-
-__global__ void cuda_max(const float* A, float* result, int axis, int dim0, int dim1) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (axis == 0) { // Max along rows
-        if (idx >= dim1) return;
-
-        float max_val = A[idx];  // Start with first row value
-        for (int i = 1; i < dim0; i++) {
-            max_val = fmaxf(max_val, A[i * dim1 + idx]);
-        }
-        result[idx] = max_val;
-    } 
-    else if (axis == 1) { // Max along columns
-        if (idx >= dim0) return;
-
-        float max_val = A[idx * dim1];  // Start with first column value
-        for (int j = 1; j < dim1; j++) {
-            max_val = fmaxf(max_val, A[idx * dim1 + j]);
-        }
-        result[idx] = max_val;
-    }
-}
-
-void launch_cuda_max(const float* d_A, float* d_result, int axis, int dim0, int dim1) {
-    int threads = 256;
-    int blocks = (axis == 0) ? (dim1 + threads - 1) / threads : (dim0 + threads - 1) / threads;
-
-    cuda_max<<<blocks, threads>>>(d_A, d_result, axis, dim0, dim1);
-
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
-    }
+    cudaDeviceSynchronize();
 }
 
 __global__ void cuda_argmax(const float* A, int* result, int axis, int dim0, int dim1) {

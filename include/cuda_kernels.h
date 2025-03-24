@@ -49,8 +49,11 @@ void launch_cuda_avgpool2d(const float* input, float* output,
                            int kernel_height, int kernel_width,
                            int stride, int pad_height, int pad_width);
 void launch_cuda_inv(float* d_A, float* d_I, int size);
-void launch_cuda_min(const float* d_A, float* d_result, int axis, int dim0, int dim1);
-void launch_cuda_max(const float* d_A, float* d_result, int axis, int dim0, int dim1);
+//void launch_cuda_min(const float* d_A, float* result, size_t size);
+void launch_cuda_min(const float* d_A, float* h_result, size_t size);
+void launch_cuda_max(const float* data, float* result, size_t size);
+void launch_cuda_max_axis(const float* data, float* result, size_t outer_dim, size_t axis_size, size_t inner_stride);
+void launch_cuda_min_axis(const float* input, float* output, size_t outer_dim, size_t axis_size, size_t inner_stride);
 void launch_cuda_transpose(const float* d_A, float* d_result, int rows, int cols);
 void launch_cuda_det(float* d_A, float* d_result, int n);
 void launch_cuda_fill(float* data, float value, int n); // for eigen

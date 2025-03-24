@@ -376,6 +376,110 @@ bool test_mean_along_axis(bool use_gpu) {
     }
 }
 
+// Test max (scalar version)
+bool test_max(bool use_gpu) {
+    std::cout << "***** TEST MAX *****\n";
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);  // Fill tensor with sequential values
+    A1.load_data(A1_data);
+
+    // Calculate max using the Tensor::max() method
+    float max_value = A1.max();
+
+    // Expected max value (since the tensor holds {0, 1, ..., 23})
+    float expected_max_value = 23.0f;
+
+    // Verify the result
+    if (max_value == expected_max_value) {
+        std::cout << "Max value tested OK: " << max_value << "\n\n";
+        return true;
+    } else {
+        std::cerr << "Max value tested NOK: expected " << expected_max_value << ", got " << max_value << "\n\n";
+        return false;
+    }
+}
+
+// Test max along axis
+bool test_max_along_axis(bool use_gpu) {
+    std::cout << "***** TEST MAX ALONG AXIS *****\n";
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+    // Test max along axis 1
+    Tensor max_result = A1.max(1);
+    print_tensor(max_result, "Max along axis 1");
+    // Define expected shape and data
+    std::vector<int> expected_shape = {2, 4};
+    std::vector<float> expected_result = {8, 9, 10, 11, 20, 21, 22, 23};
+    // Check if the computed max_result matches
+    if (max_result.shape() == expected_shape && max_result.get_data() == expected_result) {
+        std::cout << "max along axis 1 tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "max along axis 1 tested NOK\n";
+        print_tensor(max_result, "MAX RESULT");
+        return false;
+    }
+}
+
+// Test scalar minimum value in a tensor
+bool test_min(bool use_gpu) {
+    std::cout << "***** TEST MIN *****\n";
+    
+    // Create a tensor and load values
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+
+    // Compute the minimum value (scalar)
+    float result = A1.min();
+    
+    // Expected result: the minimum value in the tensor (which is 0 in this case)
+    float expected_result = 0.0f;
+
+    if (result == expected_result) {
+        std::cout << "min tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "min tested NOK: expected " << expected_result << " but got " << result << "\n";
+        return false;
+    }
+}
+
+// Test minimum along a specified axis
+bool test_min_along_axis(bool use_gpu) {
+    std::cout << "***** TEST MIN ALONG AXIS *****\n";
+    
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+
+    // Test min along axis 1
+    Tensor min_result = A1.min(1);
+    print_tensor(min_result, "Min along axis 1");
+
+    // Define expected shape and data
+    std::vector<int> expected_shape = {2, 4};
+    std::vector<float> expected_result = {0, 1, 2, 3, 12, 13, 14, 15};
+
+    // Check if the computed min_result matches the expected values
+    if (min_result.shape() == expected_shape && min_result.get_data() == expected_result) {
+        std::cout << "min along axis 1 tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "min along axis 1 tested NOK\n";
+        print_tensor(min_result, "MIN RESULT");
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -479,21 +583,35 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    // Test max (scalar)
+    if (!test_max(use_gpu)) {
+        std::cerr << "ERROR test_max failed\n";
+        return false;
+    }
+
+    // Test max along axis
+    if (!test_max_along_axis(use_gpu)) {
+        std::cerr << "ERROR test_max_along_axis failed\n";
+        return false;
+    }
+
+    // Test min
+    if (!test_min(use_gpu)) {
+        std::cerr << "ERROR test_min failed\n";
+        return false;
+    }
+
+    // Test min_along_axis
+    if (!test_min_along_axis(use_gpu)) {
+        std::cerr << "ERROR test_min_along_axis failed\n";
+        return false;
+    }
+
     // Create a tensor (2x3x4)
     Tensor A1({2, 3, 4}, use_gpu);
     std::vector<float> A1_data(2 * 3 * 4);
     for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test max along axis 1
-    std::cout << "***** TEST MAX ALONG AXIS *****\n";
-    Tensor max_result = A1.max(1);
-    print_tensor(max_result, "Max along axis 1");
-
-    // Test min along axis 1
-    std::cout << "***** TEST MIN ALONG AXIS *****\n";
-    Tensor min_result = A1.min(1);
-    print_tensor(min_result, "Min along axis 1");
 
     // Test argmax along axis 1
     std::cout << "***** TEST ARGMAX ALONG AXIS *****\n";

@@ -47,7 +47,9 @@ public:
     Tensor multiply_scalar(float scalar) const;
     Tensor sum(int axis) const;
     Tensor mean(int axis) const;
+    float max() const; // The max
     Tensor max(int axis) const;
+    float min() const;
     Tensor min(int axis) const;
     Tensor argmax(int axis) const;
     Tensor argmin(int axis) const;
