@@ -480,6 +480,56 @@ bool test_min_along_axis(bool use_gpu) {
     }
 }
 
+// Test argmax
+bool test_argmax(bool use_gpu) {
+    std::cout << "***** TEST ARGMAX ALONG AXIS *****\n";
+    
+    // Create 2x3x4 tensor with known values
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(24);
+    for (int i = 0; i < 24; ++i) A1_data[i] = i; // Values 0-23
+    A1.load_data(A1_data);
+
+    // Test argmax along axis 1 (middle dimension)
+    Tensor argmax_result = A1.argmax(1);
+    print_tensor(argmax_result, "Argmax along axis 1");
+
+    // Expected results:
+    // For each of the 2 batches and 4 positions:
+    // - In 0th batch: max indices [8,9,10,11] → all index 2
+    // - In 1st batch: max indices [20,21,22,23] → all index 2
+    std::vector<int> expected_shape = {2, 4};
+    std::vector<float> expected_result(8, 2.0f); // 8 elements, all 2.0
+
+    // Validate
+    if (argmax_result.shape() == expected_shape && 
+        argmax_result.get_data() == expected_result) {
+        std::cout << "argmax along axis 1 tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "argmax along axis 1 tested NOK\n";
+        print_tensor(argmax_result, "ARGMAX RESULT");
+        return false;
+    }
+}
+
+// Test argmin
+bool test_argmin(bool use_gpu) {
+    std::cout << "***** TEST ARGMIN ALONG AXIS *****\n";
+    // Create a tensor (2x3x4)
+    Tensor A1({2, 3, 4}, use_gpu);
+    std::vector<float> A1_data(2 * 3 * 4);
+    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+    
+    // Test argmin along axis 1
+    Tensor argmin_result = A1.argmin(1);
+    print_tensor(argmin_result, "Argmin along axis 1");
+    
+    Tensor A2({2, 2}, use_gpu);
+    A2.load_data({4.0f, 1.0f, 2.0f, 3.0f});
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -607,24 +657,23 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    // Test argmax
+    if (!test_argmax(use_gpu)) {
+        std::cerr << "ERROR test_argmax failed\n";
+        return false;
+    }
+
+    // test argmin
+    if (!test_argmin(use_gpu)) {
+        std::cerr << "ERROR test_argmin failed\n";
+        return false;
+    }
+
     // Create a tensor (2x3x4)
     Tensor A1({2, 3, 4}, use_gpu);
     std::vector<float> A1_data(2 * 3 * 4);
     for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test argmax along axis 1
-    std::cout << "***** TEST ARGMAX ALONG AXIS *****\n";
-    Tensor argmax_result = A1.argmax(1);
-    print_tensor(argmax_result, "Argmax along axis 1");
-
-    // Test argmin along axis 1
-    std::cout << "***** TEST ARGMIN ALONG AXIS *****\n";
-    Tensor argmin_result = A1.argmin(1);
-    print_tensor(argmin_result, "Argmin along axis 1");
-
-    Tensor A2({2, 2}, use_gpu);
-    A2.load_data({4.0f, 1.0f, 2.0f, 3.0f});
 
     // Test matmul
     std::cout << "***** TEST MATMUL *****\n";

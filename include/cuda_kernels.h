@@ -33,7 +33,9 @@ void launch_cuda_sum(const float* input, float* output, int axis, size_t stride,
 void launch_cuda_mean(float* data, size_t size, float axis_size);
 void launch_cuda_max(const float* input, float* output, int axis, size_t stride, size_t axis_size, size_t size);
 void launch_cuda_min(const float* input, float* output, int axis, size_t stride, size_t axis_size, size_t size);
-void launch_cuda_argmax(const float* d_A, int* d_result, int axis, int dim0, int dim1);
+void launch_cuda_argmax(const float* input, float* output, 
+                        const int* shape, int num_dims, int axis,
+                        size_t outer_dim, size_t axis_size, size_t inner_stride);
 void launch_cuda_argmin(const float* d_A, int* d_result, int axis, int dim0, int dim1);
 void launch_cuda_matmul(const float* A, const float* B, float* C, int m, int n, int p);
 void launch_cuda_transpose(const float* input, float* output, int m, int n);
@@ -49,7 +51,6 @@ void launch_cuda_avgpool2d(const float* input, float* output,
                            int kernel_height, int kernel_width,
                            int stride, int pad_height, int pad_width);
 void launch_cuda_inv(float* d_A, float* d_I, int size);
-//void launch_cuda_min(const float* d_A, float* result, size_t size);
 void launch_cuda_min(const float* d_A, float* h_result, size_t size);
 void launch_cuda_max(const float* data, float* result, size_t size);
 void launch_cuda_max_axis(const float* data, float* result, size_t outer_dim, size_t axis_size, size_t inner_stride);

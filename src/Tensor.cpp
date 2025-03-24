@@ -672,21 +672,6 @@ Tensor Tensor::max(int axis) const {
     return result;
 }
 
-// Scalar version: Finds the minimum value in the tensor
-//float Tensor::min() const {
-//    if (use_gpu_) {
-//#ifdef USE_CUDA
-//        float result;
-//        launch_cuda_min(data_.get(), &result, this->size());
-//        return result;
-//#else
-//        throw std::runtime_error("CUDA not available");
-//#endif
-//    } else {
-//        // CPU-based computation
-//        return *std::min_element(data_.get(), data_.get() + this->size());
-//    }
-//}
 float Tensor::min() const {
     if (use_gpu_) {
 #ifdef USE_CUDA
@@ -761,41 +746,58 @@ Tensor Tensor::argmax(int axis) const {
         throw std::runtime_error("Invalid axis");
     }
 
-    // Calculate output shape
     std::vector<int> output_shape = shape_;
     output_shape.erase(output_shape.begin() + axis);
-
-    // Create a tensor to store indices (integers)
     Tensor result(output_shape, use_gpu_);
-    size_t size = 1;
-    for (int dim : shape_) size *= dim;
 
     // Calculate dimensions
-    int dim0 = shape_[0];  
-    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
+    size_t outer_dim = 1;
+    for (int i = 0; i < axis; ++i) outer_dim *= shape_[i];
+    
+    size_t axis_size = shape_[axis];
+    
+    size_t inner_stride = 1;
+    for (int i = axis + 1; i < shape_.size(); ++i) 
+        inner_stride *= shape_[i];
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_argmax(data_.get(), reinterpret_cast<int*>(result.data()), axis, dim0, dim1);
+        launch_cuda_argmax(
+            data_.get(), 
+            result.data_.get(),
+            shape_.data(), 
+            shape_.size(),
+            axis,
+            outer_dim,
+            axis_size,
+            inner_stride
+        );
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // Initialize result with zeros
-        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
-
-        // Calculate strides
-        size_t stride = 1;
-        for (int i = axis + 1; i < shape_.size(); ++i) {
-            stride *= shape_[i];
-        }
-
-        for (size_t i = 0; i < size; ++i) {
-            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-            size_t current_idx = (i / stride) % shape_[axis];
-
-            if (data_.get()[i] > data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
-                result.data()[output_idx] = static_cast<float>(current_idx);
+        // CPU implementation
+        const float* input = data_.get();
+        float* output = result.data_.get();
+        
+        for (size_t outer = 0; outer < outer_dim; ++outer) {
+            for (size_t inner = 0; inner < inner_stride; ++inner) {
+                float max_val = -FLT_MAX;
+                int max_index = 0;
+                
+                for (size_t a = 0; a < axis_size; ++a) {
+                    size_t input_idx = outer * axis_size * inner_stride 
+                                     + a * inner_stride 
+                                     + inner;
+                    float val = input[input_idx];
+                    if (val > max_val) {
+                        max_val = val;
+                        max_index = a;
+                    }
+                }
+                
+                size_t output_idx = outer * inner_stride + inner;
+                output[output_idx] = static_cast<float>(max_index);
             }
         }
     }

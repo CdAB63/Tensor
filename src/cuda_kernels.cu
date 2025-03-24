@@ -648,51 +648,58 @@ void launch_cuda_min_axis(const float* input, float* output, size_t outer_dim, s
     cudaDeviceSynchronize();
 }
 
-__global__ void cuda_argmax(const float* A, int* result, int axis, int dim0, int dim1) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void cuda_argmax(const float* input, float* output, 
+    const int* shape, int num_dims, int axis, 
+    size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (axis == 0) { // Argmax along rows (output has dim1 elements)
-        if (idx >= dim1) return;
+    if (tid >= outer_dim * inner_stride) return;
 
-        float max_val = A[idx];  
-        int max_idx = 0;
+    size_t outer_idx = tid / inner_stride;
+    size_t inner_idx = tid % inner_stride;
 
-        for (int i = 1; i < dim0; i++) {
-            float val = A[i * dim1 + idx];
-            if (val > max_val) {
-                max_val = val;
-                max_idx = i;
-            }
-        }
-        result[idx] = max_idx;
-    } 
-    else if (axis == 1) { // Argmax along columns (output has dim0 elements)
-        if (idx >= dim0) return;
+    float max_val = -FLT_MAX;
+    int max_index = 0;
 
-        float max_val = A[idx * dim1];
-        int max_idx = 0;
-
-        for (int j = 1; j < dim1; j++) {
-            float val = A[idx * dim1 + j];
-            if (val > max_val) {
-                max_val = val;
-                max_idx = j;
-            }
-        }
-        result[idx] = max_idx;
+    // Calculate strides for input tensor
+    size_t axis_stride = 1;
+    for (int i = axis + 1; i < num_dims; ++i) {
+        axis_stride *= shape[i];
     }
+
+    for (size_t a = 0; a < axis_size; ++a) {
+        // Calculate input index using generalized N-dimensional indexing
+        size_t input_idx = outer_idx * axis_size * axis_stride + 
+        a * axis_stride + 
+        inner_idx;
+
+        float val = input[input_idx];
+        if (val > max_val) {
+            max_val = val;
+            max_index = a;
+        }
+    }
+
+    // Store result as float
+    output[tid] = static_cast<float>(max_index);
 }
 
-void launch_cuda_argmax(const float* d_A, int* d_result, int axis, int dim0, int dim1) {
+void launch_cuda_argmax(const float* input, float* output, 
+                        const int* shape, int num_dims, int axis,
+                        size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    size_t total_threads = outer_dim * inner_stride;
     int threads = 256;
-    int blocks = (axis == 0) ? (dim1 + threads - 1) / threads : (dim0 + threads - 1) / threads;
+    int blocks = (total_threads + threads - 1) / threads;
 
-    cuda_argmax<<<blocks, threads>>>(d_A, d_result, axis, dim0, dim1);
+    // Copy shape to device memory
+    int* d_shape;
+    cudaMalloc(&d_shape, num_dims * sizeof(int));
+    cudaMemcpy(d_shape, shape, num_dims * sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
-    }
+    cuda_argmax<<<blocks, threads>>>(input, output, d_shape, num_dims, axis, 
+                                     outer_dim, axis_size, inner_stride);
+
+    cudaFree(d_shape);
 }
 
 __global__ void cuda_argmin(const float* A, int* result, int axis, int dim0, int dim1) {
