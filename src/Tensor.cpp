@@ -805,46 +805,63 @@ Tensor Tensor::argmax(int axis) const {
     return result;
 }
 
+// In Tensor.cpp
 Tensor Tensor::argmin(int axis) const {
     if (axis < 0 || axis >= shape_.size()) {
         throw std::runtime_error("Invalid axis");
     }
 
-    // Calculate output shape
     std::vector<int> output_shape = shape_;
     output_shape.erase(output_shape.begin() + axis);
-
-    // Create a tensor to store indices (integers)
     Tensor result(output_shape, use_gpu_);
-    size_t size = 1;
-    for (int dim : shape_) size *= dim;
 
-    // Calculate dimensions
-    int dim0 = shape_[0];  
-    int dim1 = (shape_.size() > 1) ? shape_[1] : 1; // Handle 1D case
+    size_t outer_dim = 1;
+    for (int i = 0; i < axis; ++i) outer_dim *= shape_[i];
+    
+    size_t axis_size = shape_[axis];
+    
+    size_t inner_stride = 1;
+    for (int i = axis + 1; i < shape_.size(); ++i) 
+        inner_stride *= shape_[i];
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_argmin(data_.get(), reinterpret_cast<int*>(result.data()), axis, dim0, dim1);
+        launch_cuda_argmin(
+            data_.get(), 
+            result.data_.get(),
+            shape_.data(), 
+            shape_.size(),
+            axis,
+            outer_dim,
+            axis_size,
+            inner_stride
+        );
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // Initialize result with zeros
-        std::fill(result.data(), result.data() + result.shape()[0] * result.shape()[1], 0);
-
-        // Calculate strides
-        size_t stride = 1;
-        for (int i = axis + 1; i < shape_.size(); ++i) {
-            stride *= shape_[i];
-        }
-
-        for (size_t i = 0; i < size; ++i) {
-            size_t output_idx = (i / (stride * shape_[axis])) * stride + (i % stride);
-            size_t current_idx = (i / stride) % shape_[axis];
-
-            if (data_.get()[i] < data_.get()[output_idx * shape_[axis] + static_cast<int>(result.data()[output_idx])]) {
-                result.data()[output_idx] = static_cast<float>(current_idx);
+        // CPU implementation
+        const float* input = data_.get();
+        float* output = result.data_.get();
+        
+        for (size_t outer = 0; outer < outer_dim; ++outer) {
+            for (size_t inner = 0; inner < inner_stride; ++inner) {
+                float min_val = FLT_MAX;
+                int min_index = 0;
+                
+                for (size_t a = 0; a < axis_size; ++a) {
+                    size_t input_idx = outer * axis_size * inner_stride 
+                                     + a * inner_stride 
+                                     + inner;
+                    float val = input[input_idx];
+                    if (val < min_val) {
+                        min_val = val;
+                        min_index = a;
+                    }
+                }
+                
+                size_t output_idx = outer * inner_stride + inner;
+                output[output_idx] = static_cast<float>(min_index);
             }
         }
     }
@@ -889,25 +906,48 @@ Tensor Tensor::einsum(const EinsumOperation& operation, const Tensor& other) con
     return operation(*this, other);
 }
 
-// Now we define 
-
 Tensor Tensor::inv() const {
-
     if (shape_.size() != 2 || shape_[0] != shape_[1]) {
         throw std::runtime_error("Matrix must be square to compute inverse");
     }
 
-    int n = shape_[0];
+    const int n = shape_[0];
     Tensor result({n, n}, use_gpu_);
-    Tensor augmented({n, 2 * n}, use_gpu_);
 
     if (use_gpu_) {
 #ifdef USE_CUDA
-        launch_cuda_inv(data_.get(), result.data_.get(), n);
+        float *d_A = nullptr;
+        float *d_invA = nullptr;
+
+        try {
+            // Allocate device memory
+            cudaMalloc(&d_A, n * n * sizeof(float));
+            cudaMalloc(&d_invA, n * n * sizeof(float));
+
+            // Copy matrix to device
+            cudaMemcpy(d_A, data_.get(), n * n * sizeof(float), cudaMemcpyHostToDevice);
+
+            // Perform inversion using cuSOLVER
+            launch_cuda_inv(d_A, d_invA, n);
+
+            // Copy result back to host
+            cudaMemcpy(result.data_.get(), d_invA, n * n * sizeof(float), cudaMemcpyDeviceToHost);
+
+            // Free device memory
+            cudaFree(d_A);
+            cudaFree(d_invA);
+        } catch (const std::exception& e) {
+            if (d_A) cudaFree(d_A);
+            if (d_invA) cudaFree(d_invA);
+            throw std::runtime_error("Matrix inversion failed: " + std::string(e.what()));
+        }
 #else
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
+        // CPU implementation
+        Tensor augmented({n, 2 * n}, false);
+
         // Initialize augmented matrix [A | I]
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
@@ -917,44 +957,47 @@ Tensor Tensor::inv() const {
         }
 
         // Perform Gaussian elimination
-        for (int i = 0; i < n; ++i) {
-            // Find the pivot
-            int pivot = i;
-            for (int j = i + 1; j < n; ++j) {
-                if (std::abs(augmented.data()[j * 2 * n + i]) > std::abs(augmented.data()[pivot * 2 * n + i])) {
-                    pivot = j;
+        for (int k = 0; k < n; ++k) {
+            // Find pivot row
+            int pivot = k;
+            for (int i = k + 1; i < n; ++i) {
+                if (std::abs(augmented.data()[i * 2 * n + k]) > 
+                    std::abs(augmented.data()[pivot * 2 * n + k])) {
+                    pivot = i;
                 }
             }
 
-            // Swap rows
-            if (pivot != i) {
-                for (int j = 0; j < 2 * n; ++j) {
-                    std::swap(augmented.data()[i * 2 * n + j], augmented.data()[pivot * 2 * n + j]);
-                }
-            }
-
-            // Normalize the pivot row
-            float pivot_value = augmented.data()[i * 2 * n + i];
-            if (pivot_value == 0.0f) {
+            if (augmented.data()[pivot * 2 * n + k] == 0.0f) {
                 throw std::runtime_error("Matrix is singular and cannot be inverted");
             }
 
+            // Swap rows
+            if (pivot != k) {
+                for (int j = 0; j < 2 * n; ++j) {
+                    std::swap(augmented.data()[k * 2 * n + j],
+                            augmented.data()[pivot * 2 * n + j]);
+                }
+            }
+
+            // Normalize pivot row
+            float pivot_val = augmented.data()[k * 2 * n + k];
             for (int j = 0; j < 2 * n; ++j) {
-                augmented.data()[i * 2 * n + j] /= pivot_value;
+                augmented.data()[k * 2 * n + j] /= pivot_val;
             }
 
             // Eliminate other rows
-            for (int j = 0; j < n; ++j) {
-                if (j != i) {
-                    float factor = augmented.data()[j * 2 * n + i];
-                    for (int k = 0; k < 2 * n; ++k) {
-                        augmented.data()[j * 2 * n + k] -= factor * augmented.data()[i * 2 * n + k];
+            for (int i = 0; i < n; ++i) {
+                if (i != k) {
+                    float factor = augmented.data()[i * 2 * n + k];
+                    for (int j = 0; j < 2 * n; ++j) {
+                        augmented.data()[i * 2 * n + j] -= 
+                            factor * augmented.data()[k * 2 * n + j];
                     }
                 }
             }
         }
 
-        // Extract the inverse from the augmented matrix
+        // Extract inverse from augmented matrix
         for (int i = 0; i < n; ++i) {
             for (int j = 0; j < n; ++j) {
                 result.data()[i * n + j] = augmented.data()[i * 2 * n + j + n];

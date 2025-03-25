@@ -1,6 +1,8 @@
 #include "cuda_kernels.h"
 #include <stdio.h>
 
+__global__ void setupIdentityKernel(float* matrix, int n);
+
 __device__ float atomicMinFloat(float* address, float value) {
     float old = *address, assumed;
     do {
@@ -465,49 +467,6 @@ void launch_cuda_avgpool2d(const float* input, float* output,
                                         output_height, output_width);
 }
 
-__global__ void cuda_inv(float* A, float* I, int size) {
-    //int col = threadIdx.x; // Column index
-    int row = blockIdx.x;  // Row index
-
-    for (int k = 0; k < size; k++) {
-        float pivot = A[k * size + k];
-
-        __syncthreads(); // Synchronize threads to ensure pivot is read correctly
-
-        if (pivot == 0) return; // Singular matrix check (should be handled better)
-
-        float scale = A[row * size + k] / pivot;
-
-        if (row != k) {
-            for (int j = 0; j < size; j++) {
-                A[row * size + j] -= scale * A[k * size + j];
-                I[row * size + j] -= scale * I[k * size + j];
-            }
-        }
-
-        __syncthreads();
-    }
-
-    // Normalize diagonal elements
-    float diag = A[row * size + row];
-    for (int j = 0; j < size; j++) {
-        A[row * size + j] /= diag;
-        I[row * size + j] /= diag;
-    }
-}
-
-void launch_cuda_inv(float* d_A, float* d_I, int size) {
-    dim3 threads(size);  // N threads per row
-    dim3 blocks(size);   // N blocks for N rows
-
-    cuda_inv<<<blocks, threads>>>(d_A, d_I, size);
-
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
-    }
-}
-
 __global__ void cuda_max(const float* data, float* result, size_t size) {
     extern __shared__ float shared_mem[];
     int tid = threadIdx.x;
@@ -702,50 +661,161 @@ void launch_cuda_argmax(const float* input, float* output,
     cudaFree(d_shape);
 }
 
-__global__ void cuda_argmin(const float* A, int* result, int axis, int dim0, int dim1) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+// In cuda_kernels.cu
+__global__ void cuda_argmin(const float* input, float* output, 
+                            const int* shape, int num_dims, int axis, 
+                            size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (axis == 0) { // Argmin along rows (output has dim1 elements)
-        if (idx >= dim1) return;
+    if (tid >= outer_dim * inner_stride) return;
 
-        float min_val = A[idx];  
-        int min_idx = 0;
+    size_t outer_idx = tid / inner_stride;
+    size_t inner_idx = tid % inner_stride;
 
-        for (int i = 1; i < dim0; i++) {
-            float val = A[i * dim1 + idx];
-            if (val < min_val) {
-                min_val = val;
-                min_idx = i;
-            }
-        }
-        result[idx] = min_idx;
-    } 
-    else if (axis == 1) { // Argmin along columns (output has dim0 elements)
-        if (idx >= dim0) return;
+    float min_val = FLT_MAX;
+    int min_index = 0;
 
-        float min_val = A[idx * dim1];
-        int min_idx = 0;
-
-        for (int j = 1; j < dim1; j++) {
-            float val = A[idx * dim1 + j];
-            if (val < min_val) {
-                min_val = val;
-                min_idx = j;
-            }
-        }
-        result[idx] = min_idx;
+    // Calculate strides for input tensor
+    size_t axis_stride = 1;
+    for (int i = axis + 1; i < num_dims; ++i) {
+        axis_stride *= shape[i];
     }
+
+    for (size_t a = 0; a < axis_size; ++a) {
+        size_t input_idx = outer_idx * axis_size * axis_stride + 
+        a * axis_stride + 
+        inner_idx;
+
+        float val = input[input_idx];
+        if (val < min_val) {
+            min_val = val;
+            min_index = a;
+        }
+    }
+
+    output[tid] = static_cast<float>(min_index); // Cast to float
 }
 
-void launch_cuda_argmin(const float* d_A, int* d_result, int axis, int dim0, int dim1) {
+void launch_cuda_argmin(const float* input, float* output, 
+                        const int* shape, int num_dims, int axis,
+                        size_t outer_dim, size_t axis_size, size_t inner_stride) {
+    size_t total_threads = outer_dim * inner_stride;
     int threads = 256;
-    int blocks = (axis == 0) ? (dim1 + threads - 1) / threads : (dim0 + threads - 1) / threads;
+    int blocks = (total_threads + threads - 1) / threads;
 
-    cuda_argmin<<<blocks, threads>>>(d_A, d_result, axis, dim0, dim1);
+    int* d_shape;
+    cudaMalloc(&d_shape, num_dims * sizeof(int));
+    cudaMemcpy(d_shape, shape, num_dims * sizeof(int), cudaMemcpyHostToDevice);
 
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        printf("CUDA kernel launch failed: %s\n", cudaGetErrorString(err));
+    cuda_argmin<<<blocks, threads>>>(input, output, d_shape, num_dims, axis, 
+                                     outer_dim, axis_size, inner_stride);
+
+    cudaFree(d_shape);
+}
+
+void launch_cuda_inv(float* d_A, float* d_invA, int n) {
+    cusolverDnHandle_t cusolverH = NULL;
+    cublasHandle_t cublasH = NULL;
+    cudaStream_t stream = NULL;
+
+    // Initialize handles
+    cusolverDnCreate(&cusolverH);
+    cublasCreate(&cublasH);
+    cudaStreamCreate(&stream);
+    cusolverDnSetStream(cusolverH, stream);
+
+    // Prepare device arrays
+    int lwork = 0;
+    int* d_ipiv = NULL;
+    int* d_info = NULL;
+    float* d_work = NULL;
+    float** d_A_array = NULL;
+    float** d_invA_array = NULL;
+
+    const int batchSize = 1;  // Since we're processing a single matrix
+    
+    try {
+        // Create array pointers for batched operation
+        cudaMalloc(&d_A_array, batchSize * sizeof(float*));
+        cudaMalloc(&d_invA_array, batchSize * sizeof(float*));
+        cudaMemcpy(d_A_array, &d_A, sizeof(float*), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_invA_array, &d_invA, sizeof(float*), cudaMemcpyHostToDevice);
+
+        // Query workspace size
+        cusolverDnSgetrf_bufferSize(cusolverH, n, n, d_A, n, &lwork);
+
+        // Allocate device memory
+        cudaMalloc(&d_ipiv, n * batchSize * sizeof(int));
+        cudaMalloc(&d_info, batchSize * sizeof(int));
+        cudaMalloc(&d_work, lwork * batchSize * sizeof(float));
+
+        // Perform LU factorization
+        cusolverDnSgetrf(cusolverH, n, n, d_A, n, d_work, d_ipiv, d_info);
+
+        // Check singularity
+        int info = 0;
+        cudaMemcpy(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost);
+        if (info != 0) {
+            throw std::runtime_error("Matrix is singular at position " + std::to_string(info));
+        }
+
+        // Prepare identity matrix for inversion
+        float* d_identity;
+        cudaMalloc(&d_identity, n * n * sizeof(float));
+        cudaMemsetAsync(d_identity, 0, n * n * sizeof(float), stream);
+        int num_elements = n * n;
+        int threads = 256;
+        int blocks = (num_elements + threads - 1) / threads;
+        setupIdentityKernel<<<blocks, threads, 0, stream>>>(d_identity, n);
+        //setupIdentityKernel<<<(n + 255)/256, 256, 0, stream>>>(d_identity, n);
+        
+        // Compute inverse using getrs
+        cusolverDnSgetrs(cusolverH, CUBLAS_OP_N, n, n, d_A, n, d_ipiv, d_identity, n, d_info);
+        
+        // Copy the result to output
+        cudaMemcpyAsync(d_invA, d_identity, n * n * sizeof(float), cudaMemcpyDeviceToDevice, stream);
+
+        // Cleanup temporary identity matrix
+        cudaFree(d_identity);
+
+        // Check inversion success
+        cudaMemcpy(&info, d_info, sizeof(int), cudaMemcpyDeviceToHost);
+        if (info != 0) {
+            throw std::runtime_error("Inversion failed with error code " + std::to_string(info));
+        }
+
+        cudaStreamSynchronize(stream);
+    }
+    catch (...) {
+        // Cleanup and rethrow
+        cudaFree(d_A_array);
+        cudaFree(d_invA_array);
+        cudaFree(d_ipiv);
+        cudaFree(d_info);
+        cudaFree(d_work);
+        cusolverDnDestroy(cusolverH);
+        cublasDestroy(cublasH);
+        cudaStreamDestroy(stream);
+        throw;
+    }
+
+    // Cleanup
+    cudaFree(d_A_array);
+    cudaFree(d_invA_array);
+    cudaFree(d_ipiv);
+    cudaFree(d_info);
+    cudaFree(d_work);
+    cusolverDnDestroy(cusolverH);
+    cublasDestroy(cublasH);
+    cudaStreamDestroy(stream);
+}
+
+__global__ void setupIdentityKernel(float* matrix, int n) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < n * n) {
+        int row = idx / n;  // Calculate row from linear index
+        int col = idx % n;  // Calculate column from linear index
+        matrix[row * n + col] = (row == col) ? 1.0f : 0.0f;
     }
 }
 

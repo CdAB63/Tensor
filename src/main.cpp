@@ -516,18 +516,112 @@ bool test_argmax(bool use_gpu) {
 // Test argmin
 bool test_argmin(bool use_gpu) {
     std::cout << "***** TEST ARGMIN ALONG AXIS *****\n";
-    // Create a tensor (2x3x4)
+    
+    // Test Case 1: 2x3x4 Tensor
     Tensor A1({2, 3, 4}, use_gpu);
-    std::vector<float> A1_data(2 * 3 * 4);
-    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    std::vector<float> A1_data(24);
+    for (int i = 0; i < 24; ++i) A1_data[i] = i; // Values 0-23
     A1.load_data(A1_data);
-    
-    // Test argmin along axis 1
+
+    // Test argmin along axis 1 (middle dimension)
     Tensor argmin_result = A1.argmin(1);
-    print_tensor(argmin_result, "Argmin along axis 1");
+    print_tensor(argmin_result, "Argmin along axis 1 (3D Tensor)");
+
+    // Expected results for 2x3x4 tensor:
+    // - For each batch (2), the minimum in axis 1 (3 elements) will be at index 0
+    std::vector<int> expected_shape_3D = {2, 4};
+    std::vector<float> expected_result_3D(8, 0.0f); // All indices 0
     
+    bool test1_ok = (argmin_result.shape() == expected_shape_3D) && 
+                    (argmin_result.get_data() == expected_result_3D);
+
+    // Test Case 2: 2x2 Tensor
     Tensor A2({2, 2}, use_gpu);
     A2.load_data({4.0f, 1.0f, 2.0f, 3.0f});
+    Tensor argmin_result_2D = A2.argmin(1);
+    print_tensor(argmin_result_2D, "Argmin along axis 1 (2D Tensor)");
+
+    // Expected results for 2x2 tensor:
+    // Row 0: [4,1] → argmin=1, Row 1: [2,3] → argmin=0
+    std::vector<int> expected_shape_2D = {2};
+    std::vector<float> expected_result_2D = {1.0f, 0.0f};
+    
+    bool test2_ok = (argmin_result_2D.shape() == expected_shape_2D) && 
+                    (argmin_result_2D.get_data() == expected_result_2D);
+
+    if (test1_ok && test2_ok) {
+        std::cout << "argmin tested OK\n\n";
+        return true;
+    } else {
+        if (!test1_ok) std::cerr << "3D argmin failed!\n";
+        if (!test2_ok) std::cerr << "2D argmin failed!\n";
+        return false;
+    }
+}
+
+// Test matmul
+bool test_matmul(bool use_gpu) {
+    std::cout << "***** TEST MATMUL *****\n";
+
+    // Create two input tensors (2x2)
+    Tensor A({2, 2}, use_gpu);
+    Tensor B({2, 2}, use_gpu);
+
+    // Load data into the tensors
+    A.load_data({1.0f, 2.0f, 3.0f, 4.0f}); // Matrix: [[1, 2], [3, 4]]
+    B.load_data({2.0f, 0.0f, 1.0f, 2.0f}); // Matrix: [[2, 0], [1, 2]]
+
+    // Perform matrix multiplication: C = A * B
+    Tensor C = A.matmul(B);
+    print_tensor(C, "A * B");
+
+    // Expected result: [[4, 4], [10, 8]]
+    std::vector<int> expected_shape = {2, 2};
+    std::vector<float> expected_result = {4.0f, 4.0f, 10.0f, 8.0f};
+
+    bool test_ok = (C.shape() == expected_shape) && (C.get_data() == expected_result);
+
+    if (test_ok) {
+        std::cout << "Matmul tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "Matmul test failed!\n";
+        return false;
+    }
+}
+
+bool test_inv(bool use_gpu) {
+    std::cout << "***** TEST INV *****\n";
+
+    // Create reference CPU tensor
+    Tensor A_cpu({2, 2}, false);
+    A_cpu.load_data({4.0f, 7.0f, 2.0f, 6.0f});
+    Tensor invA_cpu = A_cpu.inv();
+
+    // Compute inverse on GPU/CPU
+    Tensor A({2, 2}, use_gpu);
+    A.load_data({4.0f, 7.0f, 2.0f, 6.0f});
+    Tensor invA = A.inv();
+
+    // If GPU was used, copy result to CPU for comparison
+    Tensor invA_host = invA;
+    if (use_gpu) {
+        invA_host = Tensor(invA.shape(), false); // Create CPU tensor
+        invA_host.load_data(invA.get_data()); // Copies GPU→CPU
+    }
+
+    print_tensor(invA_host, "Inverse of A (CPU-converted)");
+
+    // Compare CPU tensors
+    bool test_ok = compare_tensors(invA_host, invA_cpu, 1e-5f);
+
+    if (test_ok) {
+        std::cout << "Matrix inversion tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "Matrix inversion test failed!\n";
+        return false;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -669,35 +763,36 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create a tensor (2x3x4)
-    Tensor A1({2, 3, 4}, use_gpu);
-    std::vector<float> A1_data(2 * 3 * 4);
-    for (int i = 0; i < 2 * 3 * 4; ++i) A1_data[i] = static_cast<float>(i);
-    A1.load_data(A1_data);
-
     // Test matmul
-    std::cout << "***** TEST MATMUL *****\n";
-    Tensor B1 = A2.matmul(A2);
-    print_tensor(B1, "A2 * A2");
+    if (!test_matmul(use_gpu)) {
+        std::cerr << "ERROR test_matmul failed\n";
+        return false;
+    }
 
-    // Test inv
-    std::cout << "***** TEST INV *****\n";
-    Tensor invA = A2.inv();
-    print_tensor(invA, "Inverse of A");
+    if (!test_inv(use_gpu)) {
+        std::cerr << "ERROR test_inv failed\n";
+        return false;
+    }
+
+    // Create a tensor (2x3x4)
+    Tensor A1({4, 4}, use_gpu);
+    std::vector<float> A1_data(4 * 4);
+    for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
 
     // Test transpose
     std::cout << "***** TEST TRANSPOSE *****\n";
-    Tensor transA = A2.transpose();
+    Tensor transA = A1.transpose();
     print_tensor(transA, "Transpose of A");
 
     // Test determinant
     std::cout << "***** TEST DET *****\n";
-    float detA = A2.det();
+    float detA = A1.det();
     std::cout << "Determinant of A: " << detA << "\n";
 
     // Test eigen vector and eigen value
     std::cout << "***** TEST EIG *****\n";
-    auto [eigenvalue, eigenvector] = A2.eig();
+    auto [eigenvalue, eigenvector] = A1.eig();
     std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
     print_tensor(eigenvector, "Dominant eigenvector");
 
