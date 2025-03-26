@@ -1105,106 +1105,6 @@ float Tensor::det() const {
     }
 }
 
-//std::pair<float, Tensor> Tensor::eig() const {
-//    if (shape_.size() != 2 || shape_[0] != shape_[1]) {
-//        throw std::runtime_error("Matrix must be square to compute eigenvalues");
-//    }
-//
-//    int n = shape_[0];
-//    Tensor eigenvector({n, 1}, use_gpu_);
-//
-//    if (use_gpu_) {
-//#ifdef USE_CUDA
-//        // Use CUDA kernel to fill GPU memory with 1.0f
-//        launch_cuda_fill(eigenvector.data(), 1.0f, n);
-//#else
-//        throw std::runtime_error("CUDA not available");
-//#endif
-//    } else {
-//        // Use std::fill for CPU memory
-//        std::fill(eigenvector.data(), eigenvector.data() + n, 1.0f);
-//    }
-//
-//    float eigenvalue = 0.0f;
-//
-//    if (use_gpu_) {
-//#ifdef USE_CUDA
-//        float* d_norm;
-//        cudaMalloc(&d_norm, sizeof(float));
-//        if (d_norm == nullptr) {
-//            throw std::runtime_error("Failed to allocate memory for d_norm on GPU");
-//        }
-//
-//        float h_norm;
-//
-//        dim3 threads(256);
-//        dim3 blocks((n + threads.x - 1) / threads.x);
-//
-//        if (blocks.x > 65535 || blocks.y > 65535 || blocks.z > 65535) {
-//            throw std::runtime_error("Kernel launch configuration exceeds GPU limits");
-//        }
-//
-//        for (int iter = 0; iter < 100; ++iter) {
-//            Tensor new_eigenvector({n, 1}, use_gpu_);
-//
-//            // Matrix-vector multiplication
-//            launch_cuda_matvec_mul(data_.get(), eigenvector.data(), new_eigenvector.data(), n);
-//
-//            // Reset norm
-//            cudaMemset(d_norm, 0, sizeof(float));
-//
-//            // Compute norm and normalize
-//            launch_cuda_normalize(new_eigenvector.data(), d_norm, n);
-//
-//            // Copy norm back to host
-//            cudaMemcpy(&h_norm, d_norm, sizeof(float), cudaMemcpyDeviceToHost);
-//
-//            // Update eigenvector
-//            eigenvector = new_eigenvector;
-//
-//            // Update eigenvalue
-//            eigenvalue = h_norm;
-//        }
-//
-//        cudaFree(d_norm);
-//        Tensor eigenvector_copy = eigenvector; // Create a copy for Rayleigh quotient
-//        for (int iter = 0; iter < 100; ++iter) {
-//            Tensor new_eigenvector = matmul(eigenvector);
-//    
-//            // Calculate Rayleigh quotient (v^T A v)/(v^T v)
-//            Tensor Av = matmul(eigenvector);
-//            float numerator = Av.dot(eigenvector);  // v^T A v
-//            float denominator = eigenvector.dot(eigenvector); // v^T v
-//            eigenvalue = numerator / denominator;
-//
-//            // Normalize the eigenvector
-//            float norm = std::sqrt(denominator);
-//            launch_cuda_multiply_scalar(Av.data(), 1.0f/norm, eigenvector.data(), Av.size());
-//        }
-//#else
-//        throw std::runtime_error("CUDA not available");
-//#endif
-//    } else {
-//        // CPU Implementation
-//        for (int iter = 0; iter < 100; ++iter) {
-//            Tensor new_eigenvector = matmul(eigenvector);
-//            float norm = 0.0f;
-//            for (int i = 0; i < n; ++i) {
-//                norm += new_eigenvector.data()[i] * new_eigenvector.data()[i];
-//            }
-//            norm = std::sqrt(norm);
-//
-//            for (int i = 0; i < n; ++i) {
-//                eigenvector.data()[i] = new_eigenvector.data()[i] / norm;
-//            }
-//
-//            eigenvalue = norm;
-//        }
-//    }
-//
-//    return {eigenvalue, eigenvector};
-//}
-
 std::pair<float, Tensor> Tensor::eig() const {
     if (shape_.size() != 2 || shape_[0] != shape_[1]) {
         throw std::runtime_error("Matrix must be square to compute eigenvalues");
@@ -1351,26 +1251,6 @@ Tensor Tensor::reshape(const std::vector<int>& new_shape) const {
     return result;
 }
 
-//Tensor Tensor::flatten() const {
-//    size_t size = 1;
-//    for (int dim : shape_) size *= dim;
-//
-//    Tensor result({static_cast<int>(size)}, use_gpu_);
-//
-//    if (use_gpu_) {
-//#ifdef USE_CUDA
-//        launch_cuda_flatten(data_.get(), result.data_.get(), size);
-//#else
-//        throw std::runtime_error("CUDA not available");
-//#endif
-//    } else {
-//        // CPU flatten: just copy the data to a 1D tensor
-//        std::copy(data_.get(), data_.get() + size, result.data_.get());
-//    }
-//
-//    return result;
-//}
-
 Tensor Tensor::flatten() const {
     std::vector<int> new_shape{static_cast<int>(this->size())};
     
@@ -1516,24 +1396,29 @@ Tensor Tensor::stack(const std::vector<Tensor>& tensors, int axis) {
     // Convert new_shape to size_t for CUDA compatibility
     std::vector<size_t> size_t_new_shape(new_shape.begin(), new_shape.end());
 
-    // Create result tensor on the appropriate device
+    // Create result tensor
     Tensor result(new_shape, tensors[0].use_gpu());
-
-    // Calculate the size of each tensor's data
+    
     size_t tensor_size = 1;
     for (int dim : tensors[0].shape()) tensor_size *= dim;
 
-    // If CUDA is enabled, use GPU implementation
     if (tensors[0].use_gpu()) {
 #ifdef USE_CUDA
-        // Assuming launch_cuda_stack function is defined similarly to your previous functions
-        launch_cuda_stack(
-            tensors[0].data_.get(), result.data_.get(),
-            tensor_size * tensors.size(),
-            size_t_new_shape.data(),
-            reinterpret_cast<size_t*>(tensors[0].shape().data()),
-            axis, tensor_size
-        );
+        size_t offset = 0;
+        for (const Tensor& t : tensors) {
+            cudaError_t err = cudaMemcpy(
+                result.data_.get() + offset,
+                t.data_.get(),
+                tensor_size * sizeof(float),
+                cudaMemcpyDeviceToDevice
+            );
+            
+            if (err != cudaSuccess) {
+                throw std::runtime_error("CUDA memcpy failed: " + 
+                    std::string(cudaGetErrorString(err)));
+            }
+            offset += tensor_size;
+        }
 #else
         throw std::runtime_error("CUDA not available");
 #endif
@@ -1593,8 +1478,47 @@ Tensor Tensor::permute(const std::vector<int>& new_order) const {
         throw std::runtime_error("CUDA not available");
 #endif
     } else {
-        // CPU implementation: copy data directly (no permutation needed for identity permutation)
-        std::copy(data_.get(), data_.get() + size, result.data_.get());
+        // CPU implementation with proper permutation
+        const size_t ndims = shape_.size();
+        std::vector<size_t> strides(ndims, 1);
+        std::vector<size_t> new_strides(ndims, 1);
+
+        // Calculate strides for original tensor
+        for (int i = ndims - 2; i >= 0; --i) {
+            strides[i] = strides[i + 1] * shape_[i + 1];
+        }
+
+        // Calculate strides for new tensor
+        for (int i = ndims - 2; i >= 0; --i) {
+            new_strides[i] = new_strides[i + 1] * new_shape[i + 1];
+        }
+
+        // Create inverse permutation mapping
+        std::vector<size_t> inverse_perm(ndims);
+        for (size_t i = 0; i < ndims; ++i) {
+            inverse_perm[new_order[i]] = i;
+        }
+
+        // Perform permutation
+        const float* src = data_.get();
+        float* dst = result.data_.get();
+        const size_t total_elements = result.size();
+
+        for (size_t idx = 0; idx < total_elements; ++idx) {
+            size_t temp = idx;
+            size_t original_idx = 0;
+            
+            // Calculate original coordinates
+            for (int i = ndims - 1; i >= 0; --i) {
+                const size_t dim = inverse_perm[i];
+                const size_t stride = strides[i];
+                const size_t coord = temp / new_strides[dim];
+                temp %= new_strides[dim];
+                original_idx += coord * stride;
+            }
+            
+            dst[idx] = src[original_idx];
+        }
     }
 
     return result;

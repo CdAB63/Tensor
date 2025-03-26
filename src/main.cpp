@@ -34,26 +34,6 @@ Tensor dot_product(const Tensor& A, const Tensor& B) {
     return result;
 }
 
-// Function to compare two tensors
-//bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon = 1e-5) {
-//    // Check if shapes match
-//    if (tensor1.shape() != tensor2.shape()) {
-//        std::cerr << "Shape mismatch!\n";
-//        return false;
-//    }
-//
-//    // Check if data matches (with epsilon tolerance for floating-point comparison)
-//    for (size_t i = 0; i < tensor1.size(); ++i) {
-//        if (std::abs(tensor1.data()[i] - tensor2.data()[i]) > epsilon) {
-//            std::cerr << "Data mismatch at index " << i << ": "
-//                      << tensor1.data()[i] << " != " << tensor2.data()[i] << "\n";
-//            return false;
-//        }
-//    }
-//
-//    return true;
-//}
-
 bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon = 1e-5) {
     // Check if shapes match
     if (tensor1.shape() != tensor2.shape()) {
@@ -715,54 +695,6 @@ bool test_determinant(bool use_gpu) {
     }
 }
 
-// Test eigen
-//bool test_eigen(bool use_gpu) {
-//    std::cout << "***** TEST EIG *****\n";
-//    
-//    // Use a simple symmetric matrix with known eigenvalues
-//    // Matrix: [[4, 1], [1, 4]]
-//    // Eigenvalues: 5 and 3
-//    Tensor A1({2, 2}, use_gpu);
-//    A1.load_data({4.0f, 1.0f,
-//                  1.0f, 4.0f});
-//
-//    // Get dominant eigenvalue/eigenvector
-//    auto [eigenvalue, eigenvector] = A1.eig();
-//    std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
-//    print_tensor(eigenvector, "Dominant eigenvector");
-//
-//    // Verify eigenvalue (should be ~5.0)
-//    // Allow some numeric tolerance for power method
-//    const float expected_eigenvalue = 5.0f;
-//    const float epsilon = 1e-2f; // Increased tolerance
-//        
-//    // Verify eigenvalue is in acceptable range
-//    bool eigenvalue_ok = std::abs(eigenvalue - expected_eigenvalue) < epsilon;
-//    
-//    // Verify eigenvector property: A*v ≈ λ*v
-//    Tensor Av = A1.matmul(eigenvector);
-//    Tensor lambda_v = eigenvector.multiply_scalar(eigenvalue);
-//    
-//    bool property_ok = compare_tensors(Av, lambda_v, epsilon);
-//
-//    if (eigenvalue_ok && property_ok) {
-//        std::cout << "Eigen test OK\n\n";
-//        return true;
-//    }
-//
-//    if (!eigenvalue_ok) {
-//        std::cerr << "Eigenvalue mismatch! Expected " << expected_eigenvalue 
-//                  << ", got " << eigenvalue << "\n";
-//    }
-//    if (!property_ok) {
-//        std::cerr << "Eigenvector property A*v != λ*v failed!\n";
-//        print_tensor(Av, "A*v");
-//        print_tensor(lambda_v, "λ*v");
-//    }
-//
-//    return false;
-//}
-
 bool test_eigen(bool use_gpu) {
     std::cout << "***** TEST EIG *****\n";
     
@@ -803,7 +735,575 @@ bool test_eigen(bool use_gpu) {
     }
 
     return false;
-    
+
+}
+
+bool test_dot_product_einsum(bool use_gpu) {
+    try {
+        std::cout << "***** TEST DOT EINSUM *****\n";
+        
+        // Create vectors
+        Tensor D3({3}, use_gpu);
+        Tensor E3({3}, use_gpu);
+        std::vector<float> data = {1.0f, 2.0f, 3.0f};
+        D3.load_data(data);
+        E3.load_data(data);
+
+        // Perform dot product using einsum
+        Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
+        print_tensor(F3, "Dot product using einsum");
+
+        // Verify results
+        const float expected_dot = 14.0f; // 1*1 + 2*2 + 3*3
+        const float epsilon = 1e-5f;
+
+        // Check output shape
+        if (F3.shape() != std::vector<int>{1}) {
+            std::cerr << "Shape mismatch! Expected [1], got [";
+            for (size_t i = 0; i < F3.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << F3.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // Check output value
+        float result = F3.get_data()[0];
+        if (std::abs(result - expected_dot) > epsilon) {
+            std::cerr << "Dot product mismatch! Expected " << expected_dot 
+                      << ", got " << result << "\n";
+            return false;
+        }
+
+        std::cout << "Dot product einsum test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in dot product einsum test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test reshape
+bool test_reshape(bool use_gpu) {
+    std::cout << "***** TEST RESHAPE *****\n";
+    // Create original tensor
+    Tensor A4({2, 3}, use_gpu);
+    std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    A4.load_data(A4_data);
+    print_tensor(A4, "Original Tensor A");
+    try {
+        std::cout << "***** TEST RESHAPE *****\n";
+
+        // Perform reshape
+        Tensor reshaped = A4.reshape({3, 2});
+        print_tensor(reshaped, "Reshaped Tensor A (3x2)");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+        
+        // 1. Check output shape
+        if (reshaped.shape() != std::vector<int>{3, 2}) {
+            std::cerr << "Shape mismatch! Expected [3, 2], got [";
+            for (size_t i = 0; i < reshaped.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << reshaped.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+        // 2. Check data integrity
+        std::vector<float> original_data = A4.get_data();
+        std::vector<float> reshaped_data = reshaped.get_data();
+        
+        if (original_data.size() != reshaped_data.size()) {
+            std::cerr << "Data size mismatch after reshape! Original: " 
+                      << original_data.size() << ", Reshaped: "
+                      << reshaped_data.size() << "\n";
+            return false;
+        }
+
+        bool data_match = true;
+        for (size_t i = 0; i < original_data.size(); ++i) {
+            if (std::abs(original_data[i] - reshaped_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i << ": "
+                          << original_data[i] << " vs " << reshaped_data[i] << "\n";
+                data_match = false;
+            }
+        }
+
+        if (!data_match) {
+            std::cerr << "Reshape data verification failed!\n";
+            return false;
+        }
+
+        // 3. Additional check: reshape back to original
+        Tensor reshaped_back = reshaped.reshape(A4.shape());
+        if (!compare_tensors(A4, reshaped_back, epsilon)) {
+            std::cerr << "Round-trip reshape verification failed!\n";
+            return false;
+        }
+
+        std::cout << "Reshape test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in reshape test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test flatten
+bool test_flatten(bool use_gpu) {
+    try {
+        std::cout << "***** TEST FLATTEN *****\n";
+        
+        // Create original tensor
+        Tensor A4({2, 3}, use_gpu);
+        std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        A4.load_data(A4_data);
+        print_tensor(A4, "Original Tensor A");
+
+        // Perform flatten operation
+        Tensor flattened = A4.flatten();
+        print_tensor(flattened, "Flattened Tensor A");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+
+        // 1. Check output shape
+        if (flattened.shape() != std::vector<int>{6}) {
+            std::cerr << "Shape mismatch! Expected [6], got [";
+            for (size_t i = 0; i < flattened.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << flattened.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> original_data = A4.get_data();
+        std::vector<float> flattened_data = flattened.get_data();
+        
+        if (original_data.size() != flattened_data.size()) {
+            std::cerr << "Data size mismatch! Original: " 
+                      << original_data.size() << ", Flattened: "
+                      << flattened_data.size() << "\n";
+            return false;
+        }
+
+        bool data_match = true;
+        for (size_t i = 0; i < original_data.size(); ++i) {
+            if (std::abs(original_data[i] - flattened_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i << ": "
+                          << original_data[i] << " vs " << flattened_data[i] << "\n";
+                data_match = false;
+            }
+        }
+
+        if (!data_match) {
+            std::cerr << "Flatten data verification failed!\n";
+            return false;
+        }
+
+        // 3. Additional check: verify element order
+        std::vector<float> expected_flattened = {1,2,3,4,5,6};
+        for (size_t i = 0; i < expected_flattened.size(); ++i) {
+            if (std::abs(flattened_data[i] - expected_flattened[i]) > epsilon) {
+                std::cerr << "Element order mismatch at index " << i << ": "
+                          << flattened_data[i] << " vs expected " 
+                          << expected_flattened[i] << "\n";
+                return false;
+            }
+        }
+
+        // 4. Round-trip test
+        Tensor unflattened = flattened.reshape(A4.shape());
+        if (!compare_tensors(A4, unflattened, epsilon)) {
+            std::cerr << "Round-trip flatten/reshape verification failed!\n";
+            return false;
+        }
+
+        std::cout << "Flatten test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in flatten test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test expand_dims
+bool test_expand_dims(bool use_gpu) {
+    try {
+        std::cout << "***** TEST EXPAND DIMS *****\n";
+        
+        // Create original tensor
+        Tensor A4({2, 3}, use_gpu);
+        std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        A4.load_data(A4_data);
+        print_tensor(A4, "Original Tensor A");
+
+        // Perform expand_dims operation
+        Tensor expanded = A4.expand_dims(1);
+        print_tensor(expanded, "Expanded Tensor A (axis=1)");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+
+        // 1. Check output shape
+        const std::vector<int> expected_shape = {2, 1, 3};
+        if (expanded.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [2, 1, 3], got [";
+            for (size_t i = 0; i < expanded.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << expanded.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> original_data = A4.get_data();
+        std::vector<float> expanded_data = expanded.get_data();
+        
+        if (original_data.size() != expanded_data.size()) {
+            std::cerr << "Data size mismatch! Original: " 
+                      << original_data.size() << ", Expanded: "
+                      << expanded_data.size() << "\n";
+            return false;
+        }
+
+        bool data_match = true;
+        for (size_t i = 0; i < original_data.size(); ++i) {
+            if (std::abs(original_data[i] - expanded_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i << ": "
+                          << original_data[i] << " vs " << expanded_data[i] << "\n";
+                data_match = false;
+            }
+        }
+
+        if (!data_match) {
+            std::cerr << "Expand_dims data verification failed!\n";
+            return false;
+        }
+
+        // 3. Check dimension semantics
+        if (expanded.shape()[1] != 1) {
+            std::cerr << "Expanded dimension should be size 1, got "
+                      << expanded.shape()[1] << "\n";
+            return false;
+        }
+
+        // 4. Round-trip test
+        Tensor squeezed = expanded.squeeze();
+        if (!compare_tensors(A4, squeezed, epsilon)) {
+            std::cerr << "Round-trip expand_dims/squeeze verification failed!\n";
+            return false;
+        }
+
+        std::cout << "Expand_dims test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in expand_dims test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test squeeze
+bool test_squeeze(bool use_gpu) {
+    try {
+        std::cout << "***** TEST SQUEEZE *****\n";
+        
+        // Create original tensor
+        Tensor A4({2, 3}, use_gpu);
+        std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        A4.load_data(A4_data);
+        print_tensor(A4, "Original Tensor A");
+
+        // Add then remove singleton dimension
+        Tensor expanded = A4.expand_dims(1);
+        Tensor squeezed = expanded.squeeze();
+        print_tensor(squeezed, "Squeezed Tensor");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+
+        // 1. Check output shape matches original
+        if (squeezed.shape() != A4.shape()) {
+            std::cerr << "Shape mismatch! Expected [2, 3], got [";
+            for (size_t i = 0; i < squeezed.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << squeezed.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> original_data = A4.get_data();
+        std::vector<float> squeezed_data = squeezed.get_data();
+        
+        if (original_data.size() != squeezed_data.size()) {
+            std::cerr << "Data size mismatch! Original: " 
+                      << original_data.size() << ", Squeezed: "
+                      << squeezed_data.size() << "\n";
+            return false;
+        }
+
+        bool data_match = true;
+        for (size_t i = 0; i < original_data.size(); ++i) {
+            if (std::abs(original_data[i] - squeezed_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i << ": "
+                          << original_data[i] << " vs " << squeezed_data[i] << "\n";
+                data_match = false;
+            }
+        }
+
+        if (!data_match) {
+            std::cerr << "Squeeze data verification failed!\n";
+            return false;
+        }
+
+        // 3. Verify squeeze removed ALL singleton dimensions
+        for (int dim : squeezed.shape()) {
+            if (dim == 1) {
+                std::cerr << "Found residual singleton dimension in squeezed tensor\n";
+                return false;
+            }
+        }
+
+        // 4. Additional test: squeeze already minimal tensor
+        Tensor should_not_change = A4.squeeze();
+        if (!compare_tensors(A4, should_not_change, epsilon)) {
+            std::cerr << "Squeeze modified tensor with no singleton dimensions!\n";
+            return false;
+        }
+
+        std::cout << "Squeeze test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in squeeze test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+
+// Test concat
+bool test_concat(bool use_gpu) {
+    try {
+        std::cout << "***** TEST CONCAT *****\n";
+        
+        // Create tensors
+        Tensor A({2, 3}, use_gpu);
+        std::vector<float> A_data = {1,2,3,4,5,6};
+        A.load_data(A_data);
+        print_tensor(A, "Tensor A");
+
+        Tensor B({2, 3}, use_gpu);
+        std::vector<float> B_data = {7,8,9,10,11,12};
+        B.load_data(B_data);
+        print_tensor(B, "Tensor B");
+
+        // Perform concatenation
+        const int axis = 0;
+        Tensor concatenated = A.concat(B, axis);
+        print_tensor(concatenated, "Concatenated Tensor (axis 0)");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+        const std::vector<int> expected_shape = {4, 3};
+        const std::vector<float> expected_data = 
+            {1,2,3,4,5,6,7,8,9,10,11,12};
+
+        // 1. Check output shape
+        if (concatenated.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [4, 3], got [";
+            for (size_t i = 0; i < concatenated.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << concatenated.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> concat_data = concatenated.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_data.size(); ++i) {
+            if (std::abs(concat_data[i] - expected_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i 
+                          << ": expected " << expected_data[i]
+                          << ", got " << concat_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensors unchanged
+        Tensor A_copy({2, 3}, use_gpu);
+        A_copy.load_data(A_data);
+        Tensor B_copy({2, 3}, use_gpu);
+        B_copy.load_data(B_data);
+        
+        if (!compare_tensors(A, A_copy, epsilon) ||
+            !compare_tensors(B, B_copy, epsilon)) {
+            std::cerr << "Original tensors modified during concatenation!\n";
+            return false;
+        }
+
+        std::cout << "Concat test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in concat test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test stack
+bool test_stack(bool use_gpu) {
+    try {
+        std::cout << "***** TEST STACK *****\n";
+        
+        // Create tensors
+        Tensor A({2, 3}, use_gpu);
+        std::vector<float> A_data = {1,2,3,4,5,6};
+        A.load_data(A_data);
+        print_tensor(A, "Tensor A");
+
+        Tensor B({2, 3}, use_gpu);
+        std::vector<float> B_data = {7,8,9,10,11,12};
+        B.load_data(B_data);
+        print_tensor(B, "Tensor B");
+
+        // Perform stacking
+        const int axis = 0;
+        Tensor stacked = Tensor::stack({A, B}, axis);
+        print_tensor(stacked, "Stacked Tensor");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+        const std::vector<int> expected_shape = {2, 2, 3};
+        const std::vector<float> expected_data = 
+            {1,2,3,4,5,6,7,8,9,10,11,12};
+
+        // 1. Check output shape
+        if (stacked.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [2, 2, 3], got [";
+            for (size_t i = 0; i < stacked.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << stacked.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> stacked_data = stacked.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_data.size(); ++i) {
+            if (std::abs(stacked_data[i] - expected_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i 
+                          << ": expected " << expected_data[i]
+                          << ", got " << stacked_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensors unchanged
+        Tensor A_copy({2, 3}, use_gpu);
+        A_copy.load_data(A_data);
+        Tensor B_copy({2, 3}, use_gpu);
+        B_copy.load_data(B_data);
+        
+        if (!compare_tensors(A, A_copy, epsilon) ||
+            !compare_tensors(B, B_copy, epsilon)) {
+            std::cerr << "Original tensors modified during stacking!\n";
+            return false;
+        }
+
+        std::cout << "Stack test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in stack test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test permute
+bool test_permute(bool use_gpu) {
+    try {
+        std::cout << "***** TEST PERMUTE *****\n";
+        
+        // Create original tensor
+        Tensor A({2, 3}, use_gpu);
+        std::vector<float> A_data = {1,2,3,4,5,6};
+        A.load_data(A_data);
+        print_tensor(A, "Original Tensor A");
+
+        // Perform permutation
+        Tensor permuted = A.permute({1, 0});
+        print_tensor(permuted, "Permuted Tensor");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+        const std::vector<int> expected_shape = {3, 2};
+        const std::vector<float> expected_data = 
+            {1,4,2,5,3,6}; // Transposed version
+
+        // 1. Check output shape
+        if (permuted.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [3, 2], got [";
+            for (size_t i = 0; i < permuted.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << permuted.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check data integrity
+        std::vector<float> permuted_data = permuted.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_data.size(); ++i) {
+            if (std::abs(permuted_data[i] - expected_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i 
+                          << ": expected " << expected_data[i]
+                          << ", got " << permuted_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensor unchanged
+        Tensor A_copy({2, 3}, use_gpu);
+        A_copy.load_data(A_data);
+        if (!compare_tensors(A, A_copy, epsilon)) {
+            std::cerr << "Original tensor modified during permutation!\n";
+            return false;
+        }
+
+        // 4. Round-trip test
+        Tensor permuted_back = permuted.permute({1, 0});
+        if (!compare_tensors(A, permuted_back, epsilon)) {
+            std::cerr << "Round-trip permutation verification failed!\n";
+            return false;
+        }
+
+        std::cout << "Permute test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in permute test: " << e.what() << "\n";
+        return false;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -974,54 +1474,57 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create a tensor (4x4)
-    Tensor A1({4, 4}, use_gpu);
-    std::vector<float> A1_data(4 * 4);
-    for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
-    A1.load_data(A1_data);
-
-    // Dot product
-    Tensor D3({3}, use_gpu); // 3-element vector
-    std::vector<float> D3_data(3);
-    for (int i = 0; i < 3; ++i) D3_data[i] = static_cast<float>(i + 1);
-    D3.load_data(D3_data);
-
-    Tensor E3({3}, use_gpu); // 3-element vector
-    std::vector<float> E3_data(3);
-    for (int i = 0; i < 3; ++i) E3_data[i] = static_cast<float>(i + 1);
-    E3.load_data(E3_data);
-
-    // Perform dot product using einsum
-    std::cout << "***** TEST DOT EINSUM *****\n";
-    Tensor F3 = D3.einsum(std::function<Tensor(const Tensor&, const Tensor&)>(dot_product), E3);
-    print_tensor(F3, "Dot product using einsum");
-
-    // Create a 2x3 tensor
-    std::cout << "***** TEST RESHAPE *****\n";
-    Tensor A4({2, 3}, use_gpu); // Use GPU or CPU based on mode
-    std::vector<float> A4_data(6);
-    for (int i = 0; i < 6; ++i) A4_data[i] = static_cast<float>(i + 1);
-    A4.load_data(A4_data);
-    print_tensor(A4, "Original Tensor A");
+    // Test dot product using einsum
+    if (!test_dot_product_einsum(use_gpu)) {
+        std::cerr << "ERROR test_dot_product_einsum failed\n";
+        return false;
+    }
 
     // Test reshape
-    Tensor reshaped = A4.reshape({3, 2});
-    print_tensor(reshaped, "Reshaped Tensor A (3x2)");
+    if (!test_reshape(use_gpu)) {
+        std::cerr << "Error test_reshape failed\n";
+        return false;
+    }
 
     // Test flatten
-    std::cout << "***** TEST FLATTEN *****\n";
-    Tensor flattened = A4.flatten();
-    print_tensor(flattened, "Flattened Tensor A");
+    if (!test_flatten(use_gpu)) {
+        std::cerr << "Error test_flatten failed\n";
+        return false;
+    }
 
     // Test expand_dims
-    std::cout << "***** TEST EXPAND_DIMS *****\n";
-    Tensor expanded = A4.expand_dims(1); // Add a dimension at axis 1
-    print_tensor(expanded, "Expanded Tensor A (axis=1)");
+    if (!test_expand_dims(use_gpu)) {
+        std::cerr << "ERROR test_expand_dims failed\n";
+        return false;
+    }
 
-    // Test squeeze
-    std::cout << "***** TEST SQUEEZE *****\n";
-    Tensor squeezed = expanded.squeeze(); // Remove dimensions of size 1
-    print_tensor(squeezed, "Squeezed Tensor (should match original A)");
+    if (!test_squeeze(use_gpu)) {
+        std::cerr << "ERROR test_squeeze failed\n";
+        return false;
+    }
+
+    // Test concat
+    if (!test_concat(use_gpu)) {
+        std::cerr << "ERROR test_concat failed\n";
+        return false;
+    }
+
+    if (!test_stack(use_gpu)) {
+        std::cerr << "ERROR test_stack failed\n";
+        return false;
+    }
+
+    // Test permute
+    if (!test_permute(use_gpu)) {
+        std::cerr << "ERROR test_permute failed\n";
+        return false;
+    }
+
+    // Create original tensor
+    Tensor A4({2, 3}, use_gpu);
+    std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    A4.load_data(A4_data);
+    print_tensor(A4, "Original Tensor A");
 
     // Create another 2x3 tensor
     Tensor B4({2, 3}, use_gpu); // Use GPU or CPU based on mode
@@ -1029,16 +1532,6 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < 6; ++i) B4_data[i] = static_cast<float>(i + 7);
     B4.load_data(B4_data);
     print_tensor(B4, "Tensor B");
-
-    // Test concat
-    std::cout << "***** TEST CONCAT *****\n";
-    Tensor concatenated = A4.concat(B4, 0); // Concatenate along axis 0
-    print_tensor(concatenated, "Concatenated Tensor (A and B along axis 0)");
-
-    // Test stack
-    std::cout << "***** TEST STACK *****\n";
-    Tensor stacked = Tensor::stack({A4, B4}, 0); // Stack along axis 0
-    print_tensor(stacked, "Stacked Tensor (A and B along axis 0)");
 
     // Test permute
     std::cout << "***** TEST PERMUTE *****\n";

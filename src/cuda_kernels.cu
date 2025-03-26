@@ -977,18 +977,6 @@ __global__ void cuda_matvec_mul(const float* matrix, const float* vector, float*
     }
 }
 
-//__global__ void cuda_normalize(float* vector, float* norm, int n) {
-//    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-//    if (idx < n) {
-//        float val = vector[idx] * vector[idx];
-//        atomicAdd(norm, val);
-//    }
-//    __syncthreads();
-//    if (idx < n) {
-//        vector[idx] /= sqrtf(*norm);
-//    }
-//}
-
 __global__ void cuda_normalize(float* vector, float* norm, int n) {
     __shared__ float s_norm;
     
