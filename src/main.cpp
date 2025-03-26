@@ -1,6 +1,22 @@
 #include "Tensor.h"
 #include <iostream>
 
+bool compare_data(const std::vector<float>& a, const std::vector<float>& b, float epsilon) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (std::abs(a[i] - b[i]) > epsilon) return false;
+    }
+    return true;
+}
+
+void print_shape(const std::vector<int>& shape) {
+    for (size_t i = 0; i < shape.size(); ++i) {
+        if (i > 0) std::cerr << ", ";
+        std::cerr << shape[i];
+    }
+    std::cerr << "]\n";
+}
+
 void print_tensor(const Tensor& tensor, const std::string& name) {
     std::cout << name << ":\n";
     std::cout << "Shape: ";
@@ -1306,6 +1322,78 @@ bool test_permute(bool use_gpu) {
     }
 }
 
+// Test edge conditions
+bool test_edge_squeeze_expand(bool use_gpu) {
+    try {
+        const float epsilon = 1e-5f;
+        std::cout << "***** TEST EDGE CASES (SQUEEZE/EXPAND_DIMS) *****\n";
+
+        // Test 1: Squeeze with singleton dimensions
+        std::cout << "-- Testing squeeze --\n";
+        Tensor C4({1, 3, 1, 2}, use_gpu);
+        std::vector<float> C4_data = {1,2,3,4,5,6};
+        C4.load_data(C4_data);
+        print_tensor(C4, "Original Tensor C (1x3x1x2)");
+
+        Tensor squeezed_C = C4.squeeze();
+        print_tensor(squeezed_C, "Squeezed Tensor C");
+
+        // Verify squeeze results
+        const std::vector<int> expected_squeezed_shape = {3, 2};
+        const std::vector<float> expected_squeezed_data = C4_data; // Same data, new shape
+        
+        // 1. Check squeezed shape
+        if (squeezed_C.shape() != expected_squeezed_shape) {
+            std::cerr << "Squeeze shape mismatch! Expected [3, 2], got [";
+            print_shape(squeezed_C.shape());
+            return false;
+        }
+
+        // 2. Check squeezed data matches original data
+        if (!compare_data(squeezed_C.get_data(), expected_squeezed_data, epsilon)) {
+            std::cerr << "Squeezed data mismatch!\n";
+            return false;
+        }
+
+        // Test 2: Expand_dims
+        std::cout << "-- Testing expand_dims --\n";
+        Tensor expanded_C = squeezed_C.expand_dims(1);
+        print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
+
+        // Verify expand_dims results
+        const std::vector<int> expected_expanded_shape = {3, 1, 2};
+        const std::vector<float> expected_expanded_data = C4_data; // Same data, new shape
+        
+        // 1. Check expanded shape
+        if (expanded_C.shape() != expected_expanded_shape) {
+            std::cerr << "Expand_dims shape mismatch! Expected [3, 1, 2], got [";
+            print_shape(expanded_C.shape());
+            return false;
+        }
+
+        // 2. Check expanded data matches original data
+        if (!compare_data(expanded_C.get_data(), expected_expanded_data, epsilon)) {
+            std::cerr << "Expanded data mismatch!\n";
+            return false;
+        }
+
+        // Test 3: Verify original tensor unchanged
+        Tensor C4_copy({1, 3, 1, 2}, use_gpu);
+        C4_copy.load_data(C4_data);
+        if (!compare_tensors(C4, C4_copy, epsilon)) {
+            std::cerr << "Original tensor modified during operations!\n";
+            return false;
+        }
+
+        std::cout << "Edge case tests (squeeze/expand_dims) OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in edge case tests: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -1520,6 +1608,11 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    if (!test_edge_squeeze_expand(use_gpu)) {
+        std::cerr << "ERROR test_edge_squeeze_expand failed\n";
+        return false;
+    }
+
     // Create original tensor
     Tensor A4({2, 3}, use_gpu);
     std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
@@ -1533,27 +1626,12 @@ int main(int argc, char* argv[]) {
     B4.load_data(B4_data);
     print_tensor(B4, "Tensor B");
 
-    // Test permute
-    std::cout << "***** TEST PERMUTE *****\n";
-    Tensor permuted = A4.permute({1, 0}); // Swap dimensions
-    print_tensor(permuted, "Permuted Tensor A (swapped dimensions)");
-
     // Additional tests for edge cases
     Tensor C4({1, 3, 1, 2}, use_gpu); // Tensor with singleton dimensions
     std::vector<float> C4_data(6);
     for (int i = 0; i < 6; ++i) C4_data[i] = static_cast<float>(i + 1);
     C4.load_data(C4_data);
     print_tensor(C4, "Tensor C (1x3x1x2)");
-
-    // Test squeeze on tensor with singleton dimensions
-    std::cout << "***** TEST SQUEEZE *****\n";
-    Tensor squeezed_C = C4.squeeze();
-    print_tensor(squeezed_C, "Squeezed Tensor C");
-
-    // Test expand_dims on squeezed tensor
-    std::cout << "***** TEST EXPAND_DIMS *****\n";
-    Tensor expanded_C = squeezed_C.expand_dims(1);
-    print_tensor(expanded_C, "Expanded Tensor C (axis=1)");
 
     // Create tensors
     Tensor A5({2, 3}, use_gpu); // 2x3 tensor
