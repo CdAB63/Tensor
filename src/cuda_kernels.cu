@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 __global__ void setupIdentityKernel(float* matrix, int n);
+__device__ float warpReduceSum(float val);
 
 __device__ float atomicMinFloat(float* address, float value) {
     float old = *address, assumed;
@@ -11,6 +12,61 @@ __device__ float atomicMinFloat(float* address, float value) {
         old = atomicCAS((int*)address, __float_as_int(assumed), __float_as_int(value));
     } while (assumed != old);  // Keep looping until the atomic swap was successful
     return old;
+}
+
+__device__ float blockReduceSum(float val) {
+    __shared__ float shared[32];
+    int lane = threadIdx.x % warpSize;
+    int wid = threadIdx.x / warpSize;
+
+    val = warpReduceSum(val);
+
+    if (lane == 0) shared[wid] = val;
+    __syncthreads();
+
+    val = (threadIdx.x < blockDim.x / warpSize) ? shared[lane] : 0;
+    if (wid == 0) val = warpReduceSum(val);
+    
+    return val;
+}
+
+__device__ float warpReduceSum(float val) {
+    for (int offset = 16; offset > 0; offset /= 2)
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
+__global__ void cuda_norm(const float* input, float* output, int n) {
+    __shared__ float sdata[256];
+    int tid = threadIdx.x;
+    int i = blockIdx.x * blockDim.x + tid;
+
+    float temp = 0.0f;
+    while (i < n) {
+        temp += input[i] * input[i];
+        i += gridDim.x * blockDim.x;
+    }
+
+    sdata[tid] = temp;
+    __syncthreads();
+
+    // Block reduction
+    for (int s = blockDim.x/2; s > 0; s >>= 1) {
+        if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+        }
+        __syncthreads();
+    }
+
+    if (tid == 0) {
+        atomicAdd(output, sqrtf(sdata[0]));
+    }
+}
+
+void launch_cuda_norm(const float* input, float* output, int n) {
+    int threads = 256;
+    int blocks = min((n + threads - 1) / threads, 65535);
+    cuda_norm<<<blocks, threads>>>(input, output, n);
 }
 
 __global__ void cuda_dot(const float* a, const float* b, float* result, size_t size) {
@@ -921,15 +977,42 @@ __global__ void cuda_matvec_mul(const float* matrix, const float* vector, float*
     }
 }
 
+//__global__ void cuda_normalize(float* vector, float* norm, int n) {
+//    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//    if (idx < n) {
+//        float val = vector[idx] * vector[idx];
+//        atomicAdd(norm, val);
+//    }
+//    __syncthreads();
+//    if (idx < n) {
+//        vector[idx] /= sqrtf(*norm);
+//    }
+//}
+
 __global__ void cuda_normalize(float* vector, float* norm, int n) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < n) {
-        float val = vector[idx] * vector[idx];
-        atomicAdd(norm, val);
+    __shared__ float s_norm;
+    
+    // First calculate squared sum
+    float temp = 0.0f;
+    for (int i = threadIdx.x; i < n; i += blockDim.x) {
+        temp += vector[i] * vector[i];
+    }
+    
+    // Block-wise reduction
+    temp = blockReduceSum(temp);
+    
+    if (threadIdx.x == 0) {
+        s_norm = sqrtf(temp); // Store sqrt(sum) in shared memory
     }
     __syncthreads();
-    if (idx < n) {
-        vector[idx] /= sqrtf(*norm);
+
+    // Normalize vector
+    for (int i = threadIdx.x; i < n; i += blockDim.x) {
+        vector[i] /= s_norm;
+    }
+    
+    if (threadIdx.x == 0 && blockIdx.x == 0) {
+        *norm = s_norm; // Store actual norm, not squared
     }
 }
 

@@ -35,6 +35,25 @@ Tensor dot_product(const Tensor& A, const Tensor& B) {
 }
 
 // Function to compare two tensors
+//bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon = 1e-5) {
+//    // Check if shapes match
+//    if (tensor1.shape() != tensor2.shape()) {
+//        std::cerr << "Shape mismatch!\n";
+//        return false;
+//    }
+//
+//    // Check if data matches (with epsilon tolerance for floating-point comparison)
+//    for (size_t i = 0; i < tensor1.size(); ++i) {
+//        if (std::abs(tensor1.data()[i] - tensor2.data()[i]) > epsilon) {
+//            std::cerr << "Data mismatch at index " << i << ": "
+//                      << tensor1.data()[i] << " != " << tensor2.data()[i] << "\n";
+//            return false;
+//        }
+//    }
+//
+//    return true;
+//}
+
 bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon = 1e-5) {
     // Check if shapes match
     if (tensor1.shape() != tensor2.shape()) {
@@ -42,11 +61,15 @@ bool compare_tensors(const Tensor& tensor1, const Tensor& tensor2, float epsilon
         return false;
     }
 
-    // Check if data matches (with epsilon tolerance for floating-point comparison)
+    // Get host-accessible data copies
+    std::vector<float> data1 = tensor1.get_data();
+    std::vector<float> data2 = tensor2.get_data();
+
+    // Check if data matches (with epsilon tolerance)
     for (size_t i = 0; i < tensor1.size(); ++i) {
-        if (std::abs(tensor1.data()[i] - tensor2.data()[i]) > epsilon) {
+        if (std::abs(data1[i] - data2[i]) > epsilon) {
             std::cerr << "Data mismatch at index " << i << ": "
-                      << tensor1.data()[i] << " != " << tensor2.data()[i] << "\n";
+                      << data1[i] << " != " << data2[i] << "\n";
             return false;
         }
     }
@@ -693,18 +716,94 @@ bool test_determinant(bool use_gpu) {
 }
 
 // Test eigen
+//bool test_eigen(bool use_gpu) {
+//    std::cout << "***** TEST EIG *****\n";
+//    
+//    // Use a simple symmetric matrix with known eigenvalues
+//    // Matrix: [[4, 1], [1, 4]]
+//    // Eigenvalues: 5 and 3
+//    Tensor A1({2, 2}, use_gpu);
+//    A1.load_data({4.0f, 1.0f,
+//                  1.0f, 4.0f});
+//
+//    // Get dominant eigenvalue/eigenvector
+//    auto [eigenvalue, eigenvector] = A1.eig();
+//    std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
+//    print_tensor(eigenvector, "Dominant eigenvector");
+//
+//    // Verify eigenvalue (should be ~5.0)
+//    // Allow some numeric tolerance for power method
+//    const float expected_eigenvalue = 5.0f;
+//    const float epsilon = 1e-2f; // Increased tolerance
+//        
+//    // Verify eigenvalue is in acceptable range
+//    bool eigenvalue_ok = std::abs(eigenvalue - expected_eigenvalue) < epsilon;
+//    
+//    // Verify eigenvector property: A*v ≈ λ*v
+//    Tensor Av = A1.matmul(eigenvector);
+//    Tensor lambda_v = eigenvector.multiply_scalar(eigenvalue);
+//    
+//    bool property_ok = compare_tensors(Av, lambda_v, epsilon);
+//
+//    if (eigenvalue_ok && property_ok) {
+//        std::cout << "Eigen test OK\n\n";
+//        return true;
+//    }
+//
+//    if (!eigenvalue_ok) {
+//        std::cerr << "Eigenvalue mismatch! Expected " << expected_eigenvalue 
+//                  << ", got " << eigenvalue << "\n";
+//    }
+//    if (!property_ok) {
+//        std::cerr << "Eigenvector property A*v != λ*v failed!\n";
+//        print_tensor(Av, "A*v");
+//        print_tensor(lambda_v, "λ*v");
+//    }
+//
+//    return false;
+//}
+
 bool test_eigen(bool use_gpu) {
     std::cout << "***** TEST EIG *****\n";
-    // Create a tensor (4x4)
-    Tensor A1({4, 4}, use_gpu);
-    std::vector<float> A1_data(4 * 4);
-    for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
-    A1.load_data(A1_data);
-    // Test eigen vector and eigen value
-    auto [eigenvalue, eigenvector] = A1.eig();
+    
+    // Test matrix: [[4, 1], [1, 4]]
+    Tensor A({2, 2}, use_gpu);
+    A.load_data({4.0f, 1.0f,
+                 1.0f, 4.0f});
+
+    auto [eigenvalue, eigenvector] = A.eig();
+    
     std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
     print_tensor(eigenvector, "Dominant eigenvector");
-    return true;
+
+    // Verify eigenvalue (should be ~5.0)
+    const float expected_eigenvalue = 5.0f;
+    const float epsilon = 1e-2f;
+    
+    // Verify eigenvector property: A*v ≈ λ*v
+    Tensor Av = A.matmul(eigenvector);
+    Tensor lambda_v = eigenvector.multiply_scalar(eigenvalue);
+    
+    bool property_ok = compare_tensors(Av.flatten(), lambda_v.flatten(), epsilon);
+    bool eigenvalue_ok = std::abs(eigenvalue - expected_eigenvalue) < epsilon;
+
+    if (eigenvalue_ok && property_ok) {
+        std::cout << "Eigen test OK\n\n";
+        return true;
+    }
+
+    if (!eigenvalue_ok) {
+        std::cerr << "Eigenvalue mismatch! Expected " << expected_eigenvalue 
+                  << ", got " << eigenvalue << "\n";
+    }
+    if (!property_ok) {
+        std::cerr << "Eigenvector property A*v != λ*v failed!\n";
+        print_tensor(Av, "A*v");
+        print_tensor(lambda_v, "λ*v");
+    }
+
+    return false;
+    
 }
 
 int main(int argc, char* argv[]) {

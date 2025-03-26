@@ -31,6 +31,7 @@ public:
     
     // Basic operations
     bool use_gpu() const;
+    float rayleigh_quotient(const Tensor& v) const;
     Tensor add(const Tensor& other) const;
     float dot(const Tensor& other) const;
     Tensor conv1d(const Tensor& kernel, int stride, bool padding) const;

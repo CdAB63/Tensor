@@ -13,12 +13,13 @@
 #include <iostream> // for svd
 
 #ifdef USE_CUDA
+void launch_cuda_norm(const float* input, float* output, int n);
 void launch_cuda_add(const float* a, const float* b, float* result, size_t size);
 void launch_cuda_dot(const float* a, const float* b, float* result, size_t size);
 void launch_cuda_conv1d(const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int length,
-    int kernel_size, int out_channels,
-    int stride, int pad);
+                        int batch_size, int in_channels, int length,
+                        int kernel_size, int out_channels,
+                        int stride, int pad);
 void launch_cuda_conv2d(const float* input, const float* kernel, float* output,
                          int x, int y, int z, int a, int b, int k, int stride, int pad);
 void launch_cuda_conv3d(const float* input, const float* kernel, float* output,
