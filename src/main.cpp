@@ -1613,26 +1613,6 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create original tensor
-    Tensor A4({2, 3}, use_gpu);
-    std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    A4.load_data(A4_data);
-    print_tensor(A4, "Original Tensor A");
-
-    // Create another 2x3 tensor
-    Tensor B4({2, 3}, use_gpu); // Use GPU or CPU based on mode
-    std::vector<float> B4_data(6);
-    for (int i = 0; i < 6; ++i) B4_data[i] = static_cast<float>(i + 7);
-    B4.load_data(B4_data);
-    print_tensor(B4, "Tensor B");
-
-    // Additional tests for edge cases
-    Tensor C4({1, 3, 1, 2}, use_gpu); // Tensor with singleton dimensions
-    std::vector<float> C4_data(6);
-    for (int i = 0; i < 6; ++i) C4_data[i] = static_cast<float>(i + 1);
-    C4.load_data(C4_data);
-    print_tensor(C4, "Tensor C (1x3x1x2)");
-
     // Create tensors
     Tensor A5({2, 3}, use_gpu); // 2x3 tensor
     Tensor B5({3}, use_gpu);    // 3-element vector
@@ -1659,6 +1639,20 @@ int main(int argc, char* argv[]) {
     std::cout << "***** TEST > *****\n";
     Tensor greater = A5 > B5;
     print_tensor(greater, "A > B");
+
+    // Create original tensor
+    Tensor A4({2, 3}, use_gpu);
+    std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    A4.load_data(A4_data);
+    print_tensor(A4, "Original Tensor A");
+
+    // Create another 2x3 tensor
+    Tensor B4({2, 3}, use_gpu); // Use GPU or CPU based on mode
+    std::vector<float> B4_data(6);
+    for (int i = 0; i < 6; ++i) B4_data[i] = static_cast<float>(i + 7);
+    B4.load_data(B4_data);
+    print_tensor(B4, "Tensor B");
+
 
     std::cout << "***** TEST == *****\n";
     Tensor equal = A4 == B4;
