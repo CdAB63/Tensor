@@ -692,6 +692,21 @@ bool test_determinant(bool use_gpu) {
     }
 }
 
+// Test eigen
+bool test_eigen(bool use_gpu) {
+    std::cout << "***** TEST EIG *****\n";
+    // Create a tensor (4x4)
+    Tensor A1({4, 4}, use_gpu);
+    std::vector<float> A1_data(4 * 4);
+    for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+    // Test eigen vector and eigen value
+    auto [eigenvalue, eigenvector] = A1.eig();
+    std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
+    print_tensor(eigenvector, "Dominant eigenvector");
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -854,17 +869,17 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    // Test eigen
+    if (!test_eigen(use_gpu)) {
+        std::cerr << "ERROR test_eigen failed\n";
+        return false;
+    }
+
     // Create a tensor (4x4)
     Tensor A1({4, 4}, use_gpu);
     std::vector<float> A1_data(4 * 4);
     for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test eigen vector and eigen value
-    std::cout << "***** TEST EIG *****\n";
-    auto [eigenvalue, eigenvector] = A1.eig();
-    std::cout << "Dominant eigenvalue: " << eigenvalue << "\n";
-    print_tensor(eigenvector, "Dominant eigenvector");
 
     // Dot product
     Tensor D3({3}, use_gpu); // 3-element vector
