@@ -624,6 +624,74 @@ bool test_inv(bool use_gpu) {
     }
 }
 
+// Test transpose
+bool test_transpose(bool use_gpu) {
+    std::cout << "***** TEST TRANSPOSE *****\n";
+    // Create a tensor (4x4)
+    Tensor A1({4, 4}, use_gpu);
+    std::vector<float> A1_data(4 * 4);
+    for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
+    A1.load_data(A1_data);
+    // Test transpose
+    Tensor transA = A1.transpose();
+    print_tensor(transA, "Transpose of A");
+
+    // Expected shape remains (4,4) for square matrix
+    std::vector<int> expected_shape = {4, 4};
+    if (transA.shape() != expected_shape) {
+        std::cerr << "Error: Transposed tensor shape is incorrect. Expected (4, 4), got ("
+                  << transA.shape()[0] << ", " << transA.shape()[1] << ")\n";
+        return false;
+    }
+
+    // Generate expected transposed data (columns become rows)
+    std::vector<float> expected_data;
+    for (int col = 0; col < 4; ++col) {
+        for (int row = 0; row < 4; ++row) {
+            expected_data.push_back(A1_data[row * 4 + col]);
+        }
+    }
+
+    // Check if transposed data matches expected values
+    std::vector<float> transposed_data = transA.get_data();
+    if (transposed_data != expected_data) {
+        std::cerr << "Error: Transposed data does not match expected values.\n";
+        std::cerr << "Expected data: ";
+        for (float val : expected_data) std::cerr << val << " ";
+        std::cerr << "\nActual data:   ";
+        for (float val : transposed_data) std::cerr << val << " ";
+        std::cerr << "\n";
+        return false;
+    }
+
+    std::cout << "Transpose tested OK\n\n";
+    return true;
+}
+
+// Test determinant
+bool test_determinant(bool use_gpu) {
+    std::cout << "***** TEST DET *****\n";
+    // Create a tensor (2x2)
+    Tensor A1({2, 2}, use_gpu);
+    A1.load_data({4.0f, 7.0f, 2.0f, 6.0f});
+    // Test determinant
+    float detA = A1.det();
+    std::cout << "Determinant of A: " << detA << "\n";
+    
+    // Expected determinant: (4*6) - (7*2) = 24 - 14 = 10
+    float expected_det = 10.0f;
+    float epsilon = 1e-5;
+    bool test_ok = std::abs(detA - expected_det) < epsilon;
+
+    if (test_ok) {
+        std::cout << "Determinant tested OK\n\n";
+        return true;
+    } else {
+        std::cerr << "Determinant tested NOK: expected " << expected_det << ", got " << detA << "\n\n";
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -774,21 +842,23 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create a tensor (2x3x4)
+    // Test transpose
+    if (!test_transpose(use_gpu)) {
+        std::cerr << "ERROR test_transpose failed\n";
+        return false;
+    }
+
+    // Test determinant
+    if (!test_determinant(use_gpu)) {
+        std::cerr << "ERROR test_determinant failed\n";
+        return false;
+    }
+
+    // Create a tensor (4x4)
     Tensor A1({4, 4}, use_gpu);
     std::vector<float> A1_data(4 * 4);
     for (int i = 0; i < 4 * 4; ++i) A1_data[i] = static_cast<float>(i);
     A1.load_data(A1_data);
-
-    // Test transpose
-    std::cout << "***** TEST TRANSPOSE *****\n";
-    Tensor transA = A1.transpose();
-    print_tensor(transA, "Transpose of A");
-
-    // Test determinant
-    std::cout << "***** TEST DET *****\n";
-    float detA = A1.det();
-    std::cout << "Determinant of A: " << detA << "\n";
 
     // Test eigen vector and eigen value
     std::cout << "***** TEST EIG *****\n";
