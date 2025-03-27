@@ -1712,21 +1712,236 @@ bool test_masked_comparisons(bool use_gpu) {
 
 // Test maxpool
 bool test_maxpool(bool use_gpu) {
-    // Create a 3D input tensor (batch_size=1, channels=1, length=6)
-    Tensor inputmp({1, 1, 6}, use_gpu);
-    std::vector<float> inputmp_data(6);
-    for (int i = 0; i < 6; ++i) inputmp_data[i] = static_cast<float>(i + 1);
-    inputmp.load_data(inputmp_data);
+    try {
+        std::cout << "***** TEST MAXPOOL *****\n";
+        
+        // Create input tensor (batch_size=1, channels=1, length=6)
+        Tensor inputmp({1, 1, 6}, use_gpu);
+        std::vector<float> inputmp_data = {1, 2, 3, 4, 5, 6};
+        inputmp.load_data(inputmp_data);
+        print_tensor(inputmp, "Original Tensor");
 
-    // Print original tensor
-    print_tensor(inputmp, "Original Tensor");
+        // Perform max pooling with kernel=2, stride=2, no padding
+        Tensor max_pooled = inputmp.maxpool(2, 2, false);
+        print_tensor(max_pooled, "Max Pooled Tensor");
 
-    // Test max pooling
-    std::cout << "***** TEST MAXPOOL *****\n";
-    Tensor max_pooled = inputmp.maxpool(2, 2, use_gpu);
-    print_tensor(max_pooled, "Max Pooled Tensor");
+        // Expected results
+        const std::vector<int> expected_shape = {1, 1, 3};
+        const std::vector<float> expected_data = {2.0f, 4.0f, 6.0f};
+        const float epsilon = 1e-5f;
 
-    return true;
+        // 1. Check output shape
+        if (max_pooled.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [1, 1, 3], got [";
+            for (size_t i = 0; i < max_pooled.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << max_pooled.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check output data
+        std::vector<float> pooled_data = max_pooled.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_data.size(); ++i) {
+            if (std::abs(pooled_data[i] - expected_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i 
+                          << ": expected " << expected_data[i]
+                          << ", got " << pooled_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensor is unchanged
+        Tensor original_copy({1, 1, 6}, use_gpu);
+        original_copy.load_data(inputmp_data);
+        if (!compare_tensors(inputmp, original_copy, epsilon)) {
+            std::cerr << "Original tensor was modified during maxpool operation!\n";
+            return false;
+        }
+
+        std::cout << "Maxpool test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in maxpool test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test repeat
+bool test_repeat(bool use_gpu) {
+    try {
+        std::cout << "***** TEST REPEAT *****\n";
+        const float epsilon = 1e-5f;
+
+        // Create original tensor
+        Tensor A7({2, 3}, use_gpu);
+        std::vector<float> A7_data = {1, 2, 3, 4, 5, 6};
+        A7.load_data(A7_data);
+        print_tensor(A7, "Original Tensor");
+
+        // Test 1: Repeat axis 0 (rows) with 2 repeats
+        {
+            std::cout << "TESTING AXIS 0 REPEAT (2x)...\n";
+            Tensor result = A7.repeat(0, 2);
+            print_tensor(result, "Axis 0 Repeated");
+
+            // Create expected tensor
+            Tensor expected({4, 3}, use_gpu);
+            expected.load_data({1,2,3,4,5,6,1,2,3,4,5,6});
+
+            if (!compare_tensors(result, expected, epsilon)) {
+                std::cerr << "Axis 0 repeat failed!\n";
+                return false;
+            }
+        }
+
+        // Test 2: Repeat axis 1 (columns) with 3 repeats
+        {
+            std::cout << "TESTING AXIS 1 REPEAT (3x)...\n";
+            Tensor result = A7.repeat(1, 3);
+            print_tensor(result, "Axis 1 Repeated");
+
+            // Create expected tensor
+            Tensor expected({2, 9}, use_gpu);
+            expected.load_data({
+                1,2,3,1,2,3,1,2,3,
+                4,5,6,4,5,6,4,5,6
+            });
+
+            if (!compare_tensors(result, expected, epsilon)) {
+                std::cerr << "Axis 1 repeat failed!\n";
+                return false;
+            }
+        }
+
+        // Test 3: Verify original unchanged
+        {
+            Tensor original_copy({2, 3}, use_gpu);
+            original_copy.load_data(A7_data);
+            if (!compare_tensors(A7, original_copy, epsilon)) {
+                std::cerr << "Original tensor modified!\n";
+                return false;
+            }
+        }
+
+        std::cout << "All repeat tests passed!\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in repeat test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool test_avgpool(bool use_gpu) {
+    try {
+        std::cout << "***** TEST AVGPOOL *****\n";
+        
+        // Create input tensor (batch_size=1, channels=1, length=6)
+        Tensor inputmp({1, 1, 6}, use_gpu);
+        std::vector<float> inputmp_data = {1, 2, 3, 4, 5, 6};
+        inputmp.load_data(inputmp_data);
+        print_tensor(inputmp, "Original Tensor");
+
+        // Perform average pooling with kernel=2, stride=2, no padding
+        Tensor avg_pooled = inputmp.avgpool(2, 2, false);
+        print_tensor(avg_pooled, "Average Pooled Tensor");
+
+        // Expected results
+        const std::vector<int> expected_shape = {1, 1, 3};
+        const std::vector<float> expected_data = {1.5f, 3.5f, 5.5f};
+        const float epsilon = 1e-5f;
+
+        // 1. Check output shape
+        if (avg_pooled.shape() != expected_shape) {
+            std::cerr << "Shape mismatch! Expected [1, 1, 3], got [";
+            for (size_t i = 0; i < avg_pooled.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << avg_pooled.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check output data
+        std::vector<float> pooled_data = avg_pooled.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_data.size(); ++i) {
+            if (std::abs(pooled_data[i] - expected_data[i]) > epsilon) {
+                std::cerr << "Data mismatch at index " << i 
+                          << ": expected " << expected_data[i]
+                          << ", got " << pooled_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensor is unchanged
+        Tensor original_copy({1, 1, 6}, use_gpu);
+        original_copy.load_data(inputmp_data);
+        if (!compare_tensors(inputmp, original_copy, epsilon)) {
+            std::cerr << "Original tensor was modified during avgpool operation!\n";
+            return false;
+        }
+
+        std::cout << "Avgpool test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in avgpool test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool test_masked_assignment(bool use_gpu) {
+    try {
+        std::cout << "***** TEST MASKED ASSIGNMENT *****\n";
+        const float epsilon = 1e-5f;
+
+        // Create original tensor and mask
+        Tensor the_tensor({2, 3}, use_gpu);
+        Tensor the_mask({2, 3}, use_gpu);
+        
+        // Initialize data
+        the_tensor.load_data({1, 2, 3, 4, 5, 6});
+        the_mask.load_data({0, 1, 0, 1, 0, 1});
+        
+        // Preserve original mask by creating a copy manually
+        Tensor original_mask(the_mask.shape(), use_gpu);
+        original_mask.load_data(the_mask.get_data());
+        
+        // Perform operation
+        the_tensor = {the_mask, 10.0f};
+        
+        // Create expected result
+        Tensor expected({2, 3}, use_gpu);
+        expected.load_data({1, 10, 3, 10, 5, 10});
+
+        // 1. Verify result
+        if (!compare_tensors(the_tensor, expected, epsilon)) {
+            std::cerr << "Masked assignment result mismatch!\n";
+            print_tensor(the_tensor, "Actual Result");
+            print_tensor(expected, "Expected Result");
+            return false;
+        }
+
+        // 2. Verify mask unchanged
+        if (!compare_tensors(the_mask, original_mask, epsilon)) {
+            std::cerr << "Mask tensor was modified during assignment!\n";
+            return false;
+        }
+
+        std::cout << "Masked assignment test passed!\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in masked assignment test: " << e.what() << "\n";
+        return false;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -1966,101 +2181,29 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    // Test maxpool
     if (!test_maxpool(use_gpu)) {
         std::cerr << "ERROR test_maxpool failed\n";
         return false;
     }
 
-    // Create a 3D input tensor (batch_size=1, channels=1, length=6)
-    Tensor inputmp({1, 1, 6}, use_gpu);
-    std::vector<float> inputmp_data(6);
-    for (int i = 0; i < 6; ++i) inputmp_data[i] = static_cast<float>(i + 1);
-    inputmp.load_data(inputmp_data);
-
-    // Print original tensor
-    print_tensor(inputmp, "Original Tensor");
-
-    // Test average pooling
-    std::cout << "***** TEST AVGPOOL *****\n";
-    Tensor avg_pooled = inputmp.avgpool(2, 2, use_gpu);
-    print_tensor(avg_pooled, "Average Pooled Tensor");
+    // Test avgpool
+    if (!test_avgpool(use_gpu)) {
+        std::cerr << "ERROR test_avgpool failed\n";
+        return false;
+    }
 
     // TESTING REPEAT
-    std::cout << "***** TEST REPEAT *****\n";
-    // Create a sample tensor
-    std::cout << "***** TEST REPEAT CREATING A SAMPLE TENSOR *****\n";
-    std::vector<int> shape = {2, 3}; // 2x3 tensor
-    Tensor A7(shape, false); // Use CPU
-    float data[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    std::copy(data, data + 6, A7.data()); // Fill tensor with data
-
-    // Print ori ginal tensor
-    print_tensor(A7, "Original Tensor A");
-
-    // Test Tensor::repeat along axis 0 with 2 repeats
-    std::cout << "***** TEST REPEAT ALONG AXIS 0 (2 REPEATS) *****\n";
-    Tensor A_repeated_axis0 = A7.repeat(0, 2);
-    print_tensor(A_repeated_axis0, "Repeated Tensor (Axis 0)");
-
-    // Expected result for axis 0 repeat
-    Tensor expected_axis0({4, 3}, false);
-    float expected_data_axis0[] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f,
-                                   1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    std::copy(expected_data_axis0, expected_data_axis0 + 12, expected_axis0.data());
-
-    // Verify result
-    if (compare_tensors(A_repeated_axis0, expected_axis0)) {
-        std::cout << "Test passed: Repeated Tensor (Axis 0) matches expected result!\n";
-    } else {
-        std::cerr << "Test failed: Repeated Tensor (Axis 0) does not match expected result!\n";
+    if (!test_repeat(use_gpu)) {
+        std::cerr << "ERROR test_repeat failed\n";
+        return false;
     }
 
-    // Test Tensor::repeat along axis 1 with 3 repeats
-    std::cout << "\n***** TEST REPEAT ALONG AXIS 1 (3 REPEATS) *****\n";
-    Tensor A_repeated_axis1 = A7.repeat(1, 3);
-    print_tensor(A_repeated_axis1, "Repeated Tensor (Axis 1)");
-
-    // Expected result for axis 1 repeat
-    Tensor expected_axis1({2, 9}, false);
-    float expected_data_axis1[] = {1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f,
-                                   4.0f, 5.0f, 6.0f, 4.0f, 5.0f, 6.0f, 4.0f, 5.0f, 6.0f};
-    std::copy(expected_data_axis1, expected_data_axis1 + 18, expected_axis1.data());
-
-    // Verify result
-    if (compare_tensors(A_repeated_axis1, expected_axis1)) {
-        std::cout << "Test passed: Repeated Tensor (Axis 1) matches expected result!\n";
-    } else {
-        std::cerr << "Test failed: Repeated Tensor (Axis 1) does not match expected result!\n";
+    // Test masked assignment
+    if (!test_masked_assignment(use_gpu)) {
+        std::cerr << "ERROR test_masked_assignment failed\n";
+        return false;
     }
 
-    // Test Tensor::repeat along axis 1 with 1 repeat (no change)
-    std::cout << "\n***** TEST REPEAT ALONG AXIS 1 (1 REPEAT) *****\n";
-    Tensor A_repeated_axis1_nochange = A7.repeat(1, 1);
-    print_tensor(A_repeated_axis1_nochange, "Repeated Tensor (Axis 1, 1 Repeat)");
-
-    // Verify result
-    if (compare_tensors(A_repeated_axis1_nochange, A7)) {
-        std::cout << "Test passed: Repeated Tensor (Axis 1, 1 Repeat) matches original tensor!\n";
-    } else {
-        std::cerr << "Test failed: Repeated Tensor (Axis 1, 1 Repeat) does not match original tensor!\n";
-    }
-
-    std::cout << "***** TEST MASKED ASSIGNMENT *****\n";
-    Tensor the_tensor({2, 3}, false); // CPU tensor
-    Tensor the_mask({2, 3}, false);   // CPU mask
-
-    // Initialize data
-    the_tensor.load_data({1, 2, 3, 4, 5, 6});
-    the_mask.load_data({0, 1, 0, 1, 0, 1});
-
-    // Perform masked assignment
-    the_tensor = {the_mask, 10.0f};
-
-    // Check the result
-    std::vector<float> expected = {1, 10, 3, 10, 5, 10};
-    assert(the_tensor.get_data() == expected);
-
-    std::cout << "Masked assignment test passed!" << std::endl;
-
-    return 0;
+    return true;
 }
