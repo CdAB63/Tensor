@@ -100,6 +100,28 @@ void Tensor::free_memory() {
     // Memory is automatically managed by shared_ptr
 }
 
+Tensor Tensor::copy() const {
+    Tensor new_tensor(shape_, use_gpu_);
+    
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        size_t bytes = size() * sizeof(float);
+        float* new_data;
+        cudaMalloc(&new_data, bytes);
+        cudaMemcpy(new_data, data_.get(), bytes, cudaMemcpyDeviceToDevice);
+        new_tensor.data_ = std::shared_ptr<float>(new_data, [](float* p) { cudaFree(p); });
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        float* new_data = new float[size()];
+        std::copy(data_.get(), data_.get() + size(), new_data);
+        new_tensor.data_ = std::shared_ptr<float>(new_data, [](float* p) { delete[] p; });
+    }
+    
+    return new_tensor;
+}
+
 Tensor Tensor::add(const Tensor& other) const {
     if (shape_ != other.shape_) throw std::runtime_error("Shape mismatch");
 

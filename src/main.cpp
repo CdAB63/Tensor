@@ -1944,6 +1944,85 @@ bool test_masked_assignment(bool use_gpu) {
     }
 }
 
+// Test copy
+bool test_copy(bool use_gpu) {
+    try {
+        std::cout << "***** TEST COPY *****\n";
+        const float epsilon = 1e-5f;
+
+        // Create original tensor
+        Tensor original({2, 3}, use_gpu);
+        std::vector<float> original_data = {1, 2, 3, 4, 5, 6};
+        original.load_data(original_data);
+        print_tensor(original, "Original Tensor");
+
+        // Create copy
+        Tensor copied = original.copy();
+        print_tensor(copied, "Copied Tensor");
+
+        // 1. Verify initial state
+        if (!compare_tensors(original, copied, epsilon)) {
+            std::cerr << "Initial copy mismatch!\n";
+            return false;
+        }
+
+        // 2. Verify device consistency
+        if (original.use_gpu() != copied.use_gpu()) {
+            std::cerr << "Device mismatch! Original: " 
+                      << (original.use_gpu() ? "GPU" : "CPU")
+                      << " Copy: " 
+                      << (copied.use_gpu() ? "GPU" : "CPU") << "\n";
+            return false;
+        }
+
+        // 3. Modify original and verify copy remains unchanged
+        std::vector<float> modified_data = {7, 8, 9, 10, 11, 12};
+        original.load_data(modified_data);
+        
+        Tensor expected_unchanged(original.shape(), use_gpu);
+        expected_unchanged.load_data(original_data);
+        
+        if (!compare_tensors(copied, expected_unchanged, epsilon)) {
+            std::cerr << "Copy changed after original modification!\n";
+            print_tensor(copied, "Current Copy");
+            print_tensor(expected_unchanged, "Expected Copy");
+            return false;
+        }
+
+        // 4. Modify copy and verify original stays modified
+        std::vector<float> copy_modified_data = {13, 14, 15, 16, 17, 18};
+        copied.load_data(copy_modified_data);
+        
+        Tensor expected_modified_original(original.shape(), use_gpu);
+        expected_modified_original.load_data(modified_data);
+        
+        if (!compare_tensors(original, expected_modified_original, epsilon)) {
+            std::cerr << "Original changed after copy modification!\n";
+            print_tensor(original, "Current Original");
+            print_tensor(expected_modified_original, "Expected Original");
+            return false;
+        }
+
+        // 5. Verify shape preservation
+        if (original.shape() != copied.shape()) {
+            std::cerr << "Shape mismatch after modifications!\n";
+            std::cerr << "Original shape: [";
+            for (auto d : original.shape()) std::cerr << d << " ";
+            std::cerr << "]\nCopy shape: [";
+            for (auto d : copied.shape()) std::cerr << d << " ";
+            std::cerr << "]\n";
+            return false;
+        }
+
+        std::cout << "Copy test passed!\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in copy test: " << e.what() << "\n";
+        return false;
+    }
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -2205,5 +2284,11 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
+    // Test copy
+    if (!test_copy(use_gpu)) {
+        std::cerr << "ERROR test_copy failed\n";
+        return false;
+    }
+    
     return true;
 }
