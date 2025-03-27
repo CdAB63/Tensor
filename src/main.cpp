@@ -1394,6 +1394,341 @@ bool test_edge_squeeze_expand(bool use_gpu) {
     }
 }
 
+// Test broadcast
+bool test_broadcast(bool use_gpu) {
+    try {
+        std::cout << "***** TEST BROADCAST_TENSORS *****\n";
+        
+        // Create tensors
+        Tensor A({2, 3}, use_gpu);
+        std::vector<float> A_data = {7,8,9,10,11,12};
+        A.load_data(A_data);
+        print_tensor(A, "Tensor A");
+
+        Tensor B({3}, use_gpu);
+        std::vector<float> B_data = {0,1,2};
+        B.load_data(B_data);
+        print_tensor(B, "Tensor B");
+
+        // Perform broadcasting
+        auto [A_broadcasted, B_broadcasted] = Tensor::broadcast_tensors(A, B);
+        print_tensor(A_broadcasted, "Broadcasted Tensor A");
+        print_tensor(B_broadcasted, "Broadcasted Tensor B");
+
+        // Verify results
+        const float epsilon = 1e-5f;
+        const std::vector<int> expected_A_shape = {2, 3};
+        const std::vector<int> expected_B_shape = {2, 3};
+        const std::vector<float> expected_B_data = 
+            {0,1,2,0,1,2}; // Broadcasted version of B
+
+        // 1. Check output shapes
+        if (A_broadcasted.shape() != expected_A_shape) {
+            std::cerr << "A shape mismatch! Expected [2, 3], got [";
+            for (size_t i = 0; i < A_broadcasted.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << A_broadcasted.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        if (B_broadcasted.shape() != expected_B_shape) {
+            std::cerr << "B shape mismatch! Expected [2, 3], got [";
+            for (size_t i = 0; i < B_broadcasted.shape().size(); ++i) {
+                if (i > 0) std::cerr << ", ";
+                std::cerr << B_broadcasted.shape()[i];
+            }
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // 2. Check broadcasted B data
+        std::vector<float> B_bc_data = B_broadcasted.get_data();
+        bool data_ok = true;
+        for (size_t i = 0; i < expected_B_data.size(); ++i) {
+            if (std::abs(B_bc_data[i] - expected_B_data[i]) > epsilon) {
+                std::cerr << "B data mismatch at index " << i 
+                          << ": expected " << expected_B_data[i]
+                          << ", got " << B_bc_data[i] << "\n";
+                data_ok = false;
+            }
+        }
+        if (!data_ok) return false;
+
+        // 3. Verify original tensors unchanged
+        Tensor A_copy({2, 3}, use_gpu);
+        A_copy.load_data(A_data);
+        Tensor B_copy({3}, use_gpu);
+        B_copy.load_data(B_data);
+        
+        if (!compare_tensors(A, A_copy, epsilon) ||
+            !compare_tensors(B, B_copy, epsilon)) {
+            std::cerr << "Original tensors modified during broadcasting!\n";
+            return false;
+        }
+
+        std::cout << "Broadcast test OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in broadcast test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool test_comparisons(bool use_gpu) {
+    try {
+        std::cout << "***** TEST COMPARISON OPERATORS *****\n";
+        const float epsilon = 1e-5f;
+
+        // ==================== > OPERATOR TEST ====================
+        {
+            std::cout << "Testing > operator...\n";
+            // Create tensors with mixed true/false cases
+            Tensor A({2, 3}, use_gpu);
+            std::vector<float> A_data = {3,1,5,2,6,4};  // 2x3
+            A.load_data(A_data);
+            print_tensor(A, "Tensor A");
+
+            Tensor B({3}, use_gpu);    
+            std::vector<float> B_data = {2,0,3};        // 3-element vector
+            B.load_data(B_data);
+            print_tensor(B, "Tensor B");
+
+            // Perform operation
+            Tensor result = A > B;
+            print_tensor(result, "A > B result");
+
+            // Expected results (broadcasted comparison)
+            const std::vector<int> expected_shape = {2, 3};
+            const std::vector<float> expected_data = {1,1,1,0,1,1};
+
+            // 1. Check shape
+            if (result.shape() != expected_shape) {
+                std::cerr << "> operator shape mismatch! Expected [2, 3], got [";
+                print_shape(result.shape());
+                return false;
+            }
+
+            // 2. Check data
+            std::vector<float> result_data = result.get_data();
+            bool data_ok = true;
+            for (size_t i = 0; i < expected_data.size(); ++i) {
+                if (std::abs(result_data[i] - expected_data[i]) > epsilon) {
+                    std::cerr << "> operator data mismatch at " << i 
+                              << ": expected " << expected_data[i]
+                              << ", got " << result_data[i] << "\n";
+                    data_ok = false;
+                }
+            }
+            if (!data_ok) return false;
+
+            // 3. Verify originals unchanged
+            Tensor A_copy({2, 3}, use_gpu);
+            A_copy.load_data(A_data);
+            Tensor B_copy({3}, use_gpu);
+            B_copy.load_data(B_data);
+            if (!compare_tensors(A, A_copy, epsilon) || 
+                !compare_tensors(B, B_copy, epsilon)) {
+                std::cerr << "Originals modified during > operation!\n";
+                return false;
+            }
+        }
+
+        // ==================== == OPERATOR TEST ====================
+        {
+            std::cout << "Testing == operator...\n";
+            // Create tensors with partial matches
+            Tensor A({2, 3}, use_gpu);
+            std::vector<float> A_data = {1,2,3,4,5,6};
+            A.load_data(A_data);
+            print_tensor(A, "Tensor A");
+
+            Tensor B({2, 3}, use_gpu);
+            std::vector<float> B_data = {1,0,3,4,5,7};  // Partial matches
+            B.load_data(B_data);
+            print_tensor(B, "Tensor B");
+
+            // Perform operation
+            Tensor result = A == B;
+            print_tensor(result, "A == B result");
+
+            // Expected results
+            const std::vector<int> expected_shape = {2, 3};
+            const std::vector<float> expected_data = {1,0,1,1,1,0};
+
+            // 1. Check shape
+            if (result.shape() != expected_shape) {
+                std::cerr << "== operator shape mismatch! Expected [2, 3], got [";
+                print_shape(result.shape());
+                return false;
+            }
+
+            // 2. Check data
+            std::vector<float> result_data = result.get_data();
+            bool data_ok = true;
+            for (size_t i = 0; i < expected_data.size(); ++i) {
+                if (std::abs(result_data[i] - expected_data[i]) > epsilon) {
+                    std::cerr << "== operator data mismatch at " << i 
+                              << ": expected " << expected_data[i]
+                              << ", got " << result_data[i] << "\n";
+                    data_ok = false;
+                }
+            }
+            if (!data_ok) return false;
+
+            // 3. Verify originals unchanged
+            Tensor A_copy({2, 3}, use_gpu);
+            A_copy.load_data(A_data);
+            Tensor B_copy({2, 3}, use_gpu);
+            B_copy.load_data(B_data);
+            if (!compare_tensors(A, A_copy, epsilon) || 
+                !compare_tensors(B, B_copy, epsilon)) {
+                std::cerr << "Originals modified during == operation!\n";
+                return false;
+            }
+        }
+
+        // ==================== NEGATIVE TEST CASES ====================
+        {
+            std::cout << "Testing negative cases...\n";
+            // Test shape mismatch that should throw
+            Tensor C({2, 3}, use_gpu);
+            Tensor D({2, 4}, use_gpu);
+            try {
+                auto result = C > D;  // Should throw
+                std::cerr << "Failed to catch shape mismatch in > operator!\n";
+                return false;
+            } catch (const std::runtime_error&) {
+                // Expected error
+            }
+
+            // Test empty tensor (scalar with initialized data)
+            Tensor E({}, use_gpu);
+            E.load_data({5.0f}); // Initialize with data
+            Tensor F({}, use_gpu);
+            F.load_data({5.0f}); // Initialize with same data
+            try {
+                auto result = E == F;
+                if (result.size() != 1 || result.get_data()[0] != 1.0f) {
+                    print_tensor(result, "RESULT FOR EMPTY TENSOR");
+                    std::cerr << "Empty tensor comparison failed!\n";
+                    return false;
+                }
+            } catch (...) {
+                std::cerr << "Unexpected error with empty tensors!\n";
+                return false;
+            }
+        }
+
+        std::cout << "All comparison tests OK\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in comparison test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test masked comparisons
+bool test_masked_comparisons(bool use_gpu) {
+    try {
+        const float epsilon = 1e-5f;
+        std::cout << "***** TEST MASKED COMPARISONS *****\n";
+
+        // ==================== A > SCALAR TEST ====================
+        Tensor A({2, 3}, use_gpu);
+        std::vector<float> A_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        A.load_data(A_data);
+        print_tensor(A, "Tensor A");
+
+        Tensor mask_scalar = A > 3.0f;
+        print_tensor(mask_scalar, "A > 3.0 result");
+
+        // Expected: [[0,0,0], [1,1,1]]
+        std::vector<float> expected_scalar = {0,0,0,1,1,1};
+        if (mask_scalar.shape() != std::vector<int>{2, 3}) {
+            std::cerr << "Shape mismatch for scalar comparison\n";
+            return false;
+        }
+        std::vector<float> result_scalar = mask_scalar.get_data();
+        for (size_t i = 0; i < expected_scalar.size(); ++i) {
+            if (std::abs(result_scalar[i] - expected_scalar[i]) > epsilon) {
+                std::cerr << "Data mismatch at " << i << ": "
+                          << result_scalar[i] << " vs " << expected_scalar[i] << "\n";
+                return false;
+            }
+        }
+
+        // ==================== A > TENSOR (BROADCAST) TEST ====================
+        Tensor B({3}, use_gpu);
+        std::vector<float> B_data = {2.0f, 3.0f, 4.0f};
+        B.load_data(B_data);
+        print_tensor(B, "Tensor B");
+
+        Tensor mask_tensor = A > B;
+        print_tensor(mask_tensor, "A > B result");
+
+        // Expected: [[0,0,0], [1,1,1]]
+        std::vector<float> expected_tensor = {0,0,0,1,1,1};
+        if (mask_tensor.shape() != std::vector<int>{2, 3}) {
+            std::cerr << "Shape mismatch for tensor comparison\n";
+            return false;
+        }
+        std::vector<float> result_tensor = mask_tensor.get_data();
+        for (size_t i = 0; i < expected_tensor.size(); ++i) {
+            if (std::abs(result_tensor[i] - expected_tensor[i]) > epsilon) {
+                std::cerr << "Data mismatch at " << i << ": "
+                          << result_tensor[i] << " vs " << expected_tensor[i] << "\n";
+                return false;
+            }
+        }
+
+        // ==================== VERIFY ORIGINAL TENSORS UNCHANGED ====================
+        std::vector<float> A_post = A.get_data();
+        for (size_t i = 0; i < A_data.size(); ++i) {
+            if (std::abs(A_post[i] - A_data[i]) > epsilon) {
+                std::cerr << "Original tensor A modified during comparison!\n";
+                return false;
+            }
+        }
+
+        std::vector<float> B_post = B.get_data();
+        for (size_t i = 0; i < B_data.size(); ++i) {
+            if (std::abs(B_post[i] - B_data[i]) > epsilon) {
+                std::cerr << "Original tensor B modified during comparison!\n";
+                return false;
+            }
+        }
+
+        std::cout << "All masked comparison tests passed!\n";
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Test failed: " << e.what() << "\n";
+        return false;
+    }
+}
+
+// Test maxpool
+bool test_maxpool(bool use_gpu) {
+    // Create a 3D input tensor (batch_size=1, channels=1, length=6)
+    Tensor inputmp({1, 1, 6}, use_gpu);
+    std::vector<float> inputmp_data(6);
+    for (int i = 0; i < 6; ++i) inputmp_data[i] = static_cast<float>(i + 1);
+    inputmp.load_data(inputmp_data);
+
+    // Print original tensor
+    print_tensor(inputmp, "Original Tensor");
+
+    // Test max pooling
+    std::cout << "***** TEST MAXPOOL *****\n";
+    Tensor max_pooled = inputmp.maxpool(2, 2, use_gpu);
+    print_tensor(max_pooled, "Max Pooled Tensor");
+
+    return true;
+}
+
 int main(int argc, char* argv[]) {
     // Determine if we should use GPU or CPU
     bool use_gpu = false; // Default to CPU
@@ -1613,74 +1948,28 @@ int main(int argc, char* argv[]) {
         return false;
     }
 
-    // Create tensors
-    Tensor A5({2, 3}, use_gpu); // 2x3 tensor
-    Tensor B5({3}, use_gpu);    // 3-element vector
+    // Test broadcast
+    if (!test_broadcast(use_gpu)) {
+        std::cerr << "ERROR test_broadcast failed\n";
+        return false;
+    }
 
-    // Initialize tensors
-    std::vector<float> A5_data(6);
-    std::vector<float> B5_data(3);
-    for (int i = 0; i < 6; ++i) A5_data[i] = static_cast<float>(i + 7);
-    for (int i = 0; i < 3; ++i) B5_data[i] = static_cast<float>(i);
-    A5.load_data(A5_data);
-    B5.load_data(B5_data);
+    // Test comparisons
+    if (!test_comparisons(use_gpu)) {
+        std::cerr << "ERROR test_comparisons failed\n";
+        return false;
+    }
 
-    // Print tensors
-    print_tensor(A5, "Tensor A");
-    print_tensor(B5, "Tensor B");
+    // Test masked comparisons
+    if (!test_masked_comparisons(use_gpu)) {
+        std::cerr << "ERROR test_masked_comparisons failed\n";
+        return false;
+    }
 
-    // Test broadcasting
-    std::cout << "***** TEST BROADCAST_TENSORS *****\n";
-    auto [A_broadcasted, B_broadcasted] = Tensor::broadcast_tensors(A5, B5);
-    print_tensor(A_broadcasted, "Broadcasted Tensor A");
-    print_tensor(B_broadcasted, "Broadcasted Tensor B");
-
-    // Test element-wise comparison
-    std::cout << "***** TEST > *****\n";
-    Tensor greater = A5 > B5;
-    print_tensor(greater, "A > B");
-
-    // Create original tensor
-    Tensor A4({2, 3}, use_gpu);
-    std::vector<float> A4_data = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-    A4.load_data(A4_data);
-    print_tensor(A4, "Original Tensor A");
-
-    // Create another 2x3 tensor
-    Tensor B4({2, 3}, use_gpu); // Use GPU or CPU based on mode
-    std::vector<float> B4_data(6);
-    for (int i = 0; i < 6; ++i) B4_data[i] = static_cast<float>(i + 7);
-    B4.load_data(B4_data);
-    print_tensor(B4, "Tensor B");
-
-
-    std::cout << "***** TEST == *****\n";
-    Tensor equal = A4 == B4;
-    print_tensor(equal, "A == B");
-
-    // Create a tensor
-    Tensor A6({2, 3}, use_gpu); // 2x3 tensor
-    std::vector<float> A6_data(6);
-    for (int i = 0; i < 6; ++i) A6_data[i] = static_cast<float>(i + 1);
-    A6.load_data(A6_data);
-
-    // Print original tensor
-    print_tensor(A6, "Original Tensor A");
-
-    // Compare with a scalar
-    std::cout << "***** TEST MASK > float *****\n";
-    Tensor mask = A6 > 3.0f;
-    print_tensor(mask, "Mask (A > 3)");
-
-    // Compare with another tensor (broadcasting)
-    Tensor B6({3}, use_gpu); // 3-element vector
-    std::vector<float> B6_data(3);
-    for (int i = 0; i < 3; ++i) B6_data[i] = static_cast<float>(i + 2);
-    B6.load_data(B6_data);
-
-    std::cout << "***** TEST MASK A > B *****\n";
-    Tensor mask2 = A6 > B6;
-    print_tensor(mask2, "Mask (A > B)");
+    if (!test_maxpool(use_gpu)) {
+        std::cerr << "ERROR test_maxpool failed\n";
+        return false;
+    }
 
     // Create a 3D input tensor (batch_size=1, channels=1, length=6)
     Tensor inputmp({1, 1, 6}, use_gpu);
@@ -1690,11 +1979,6 @@ int main(int argc, char* argv[]) {
 
     // Print original tensor
     print_tensor(inputmp, "Original Tensor");
-
-    // Test max pooling
-    std::cout << "***** TEST MAXPOOL *****\n";
-    Tensor max_pooled = inputmp.maxpool(2, 2, use_gpu);
-    print_tensor(max_pooled, "Max Pooled Tensor");
 
     // Test average pooling
     std::cout << "***** TEST AVGPOOL *****\n";
