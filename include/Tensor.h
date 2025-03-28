@@ -21,6 +21,8 @@ public:
     // Memory management
     void load_data(const std::vector<float>& data);
     std::vector<float> get_data() const;
+    float at(const std::vector<int>& indices) const;
+    Tensor slice(const std::vector<std::pair<int, int>>& ranges) const;
 
     // Utility method to calculate the total number of elements in the tensor
     size_t size() const {

@@ -79,6 +79,73 @@ bool Tensor::use_gpu() const {
     return use_gpu_;
 }
 
+float Tensor::at(const std::vector<int>& indices) const {
+    if (use_gpu_) {
+        throw std::runtime_error("Element access not supported for GPU tensors. Use get_data() to copy to CPU first.");
+    }
+    if (indices.size() != shape_.size()) {
+        throw std::runtime_error("Number of indices does not match tensor rank");
+    }
+    size_t flat_index = 0;
+    for (int i = 0; i < shape_.size(); ++i) {
+        if (indices[i] < 0 || indices[i] >= shape_[i]) {
+            throw std::out_of_range("Index out of bounds in dimension " + std::to_string(i));
+        }
+        flat_index = flat_index * shape_[i] + indices[i];
+    }
+    return data_.get()[flat_index];
+}
+
+Tensor Tensor::slice(const std::vector<std::pair<int, int>>& ranges) const {
+    if (ranges.size() != shape_.size()) {
+        throw std::runtime_error("Number of ranges must match tensor dimensions");
+    }
+
+    std::vector<int> new_shape;
+    std::vector<int> starts;
+    for (size_t i = 0; i < ranges.size(); ++i) {
+        int start = ranges[i].first;
+        int end = ranges[i].second;
+        if (start < 0 || end > shape_[i] || start >= end) {
+            throw std::invalid_argument("Invalid range for dimension " + std::to_string(i));
+        }
+        new_shape.push_back(end - start);
+        starts.push_back(start);
+    }
+
+    Tensor result(new_shape, use_gpu_);
+
+    if (use_gpu_) {
+#ifdef USE_CUDA
+        throw std::runtime_error("GPU slicing not implemented");
+#else
+        throw std::runtime_error("CUDA not available");
+#endif
+    } else {
+        size_t total_elements = result.size();
+        const float* src = data_.get();
+        float* dest = result.data_.get();
+
+        for (size_t idx = 0; idx < total_elements; ++idx) {
+            std::vector<int> new_indices(new_shape.size());
+            size_t temp = idx;
+            for (int i = new_shape.size() - 1; i >= 0; --i) {
+                new_indices[i] = temp % new_shape[i];
+                temp /= new_shape[i];
+            }
+
+            size_t src_idx = 0;
+            for (size_t i = 0; i < new_indices.size(); ++i) {
+                src_idx = src_idx * shape_[i] + (starts[i] + new_indices[i]);
+            }
+
+            dest[idx] = src[src_idx];
+        }
+    }
+
+    return result;
+}
+
 float Tensor::rayleigh_quotient(const Tensor& v) const {
     if (shape().size() != 2 || shape()[0] != shape()[1]) {
         throw std::runtime_error("Matrix must be square for Rayleigh quotient");

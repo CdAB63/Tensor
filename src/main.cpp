@@ -1,6 +1,25 @@
 #include "Tensor.h"
 #include <iostream>
 
+// Helper functions
+std::string format_indices(const std::vector<int>& indices) {
+    std::string s = "(";
+    for (size_t i = 0; i < indices.size(); ++i) {
+        s += std::to_string(indices[i]);
+        if (i != indices.size()-1) s += ", ";
+    }
+    return s + ")";
+}
+
+void print_vector(const std::vector<int>& v) {
+    std::cerr << "[";
+    for (size_t i = 0; i < v.size(); ++i) {
+        std::cerr << v[i];
+        if (i != v.size()-1) std::cerr << ", ";
+    }
+    std::cerr << "]\n";
+}
+
 bool compare_data(const std::vector<float>& a, const std::vector<float>& b, float epsilon) {
     if (a.size() != b.size()) return false;
     for (size_t i = 0; i < a.size(); ++i) {
@@ -1944,6 +1963,162 @@ bool test_masked_assignment(bool use_gpu) {
     }
 }
 
+// Test the accessor methods at and slice
+bool test_at_method(bool use_gpu) {
+    try {
+        std::cout << "***** TEST AT() METHOD *****\n";
+        Tensor t({2, 3, 4}, use_gpu);
+        
+        // Initialize data with pattern: i * ((i % 3 == 0) ? -1 : 1)
+        std::vector<float> data(24);
+        for (int i = 0; i < 24; ++i) {
+            data[i] = i * ((i % 3 == 0) ? -1 : 1);
+        }
+        t.load_data(data);
+
+        // For GPU tensors: Copy to CPU first
+        Tensor t_cpu = t;
+        if (use_gpu) {
+            t_cpu = Tensor(t.shape(), false);
+            t_cpu.load_data(t.get_data());
+        }
+
+        const float epsilon = 1e-5f;
+        bool success = true;
+
+        // Test valid indices (CPU only)
+        if (!use_gpu) {
+            std::vector<std::pair<std::vector<int>, float>> test_cases = {
+                {{0, 0, 0}, 0},     // Index 0: 0 * -1 = 0
+                {{1, 2, 3}, 23},    // Index 23: 23 * 1 = 23
+                {{0, 1, 2}, -6},    // Index 6: 6 * -1 = -6
+                {{1, 0, 3}, -15}    // Index 15: 15 * -1 = -15
+            };
+
+            for (const auto& [indices, expected] : test_cases) {
+                float val = t_cpu.at(indices);
+                if (std::abs(val - expected) > epsilon) {
+                    std::cerr << "At " << format_indices(indices)
+                              << " expected " << expected
+                              << " got " << val << "\n";
+                    success = false;
+                }
+            }
+        }
+
+        // Test invalid indices (CPU only)
+        if (!use_gpu) {
+            std::vector<std::vector<int>> bad_indices = {
+                {2, 0, 0}, {1, 3, 0}, {0, 0, 4}, {0, 0}
+            };
+            for (const auto& indices : bad_indices) {
+                try {
+                    t_cpu.at(indices);
+                    std::cerr << "Failed to throw for invalid indices: "
+                              << format_indices(indices) << "\n";
+                    success = false;
+                } catch (const std::exception&) {
+                    // Expected exception
+                }
+            }
+        }
+
+        // Test GPU tensor access throws
+        if (use_gpu) {
+            try {
+                t.at({0, 0, 0});
+                std::cerr << "Failed to throw for GPU tensor access\n";
+                success = false;
+            } catch (const std::exception& e) {
+                // Expected exception
+            }
+        }
+
+        if (success) {
+            std::cout << "at() test passed!\n\n";
+            return true;
+        }
+        return false;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in at() test: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool test_slice_method(bool use_gpu) {
+    try {
+        std::cout << "***** TEST SLICE() METHOD *****\n";
+        const float epsilon = 1e-5f;
+
+        // Create 4D tensor (2x3x4x2)
+        Tensor original({2, 3, 4, 2}, use_gpu);
+        std::vector<float> data(48);
+        for (int i = 0; i < 48; ++i) data[i] = i;
+        original.load_data(data);
+
+        // Handle GPU by copying to CPU first
+        Tensor original_cpu = original;
+        if (use_gpu) {
+            original_cpu = Tensor(original.shape(), false);
+            original_cpu.load_data(original.get_data());
+        }
+
+        // Test 1: Complex slice
+        auto sliced = original_cpu.slice({
+            {1, 2},     // Keep index 1 in dim 0
+            {0, 2},     // Keep indices 0,1 in dim 1
+            {1, 4},     // Keep indices 1,2,3 in dim 2
+            {0, 1}      // Keep index 0 in dim 3
+        });
+
+        // Verify new shape (1, 2, 3, 1)
+        if (sliced.shape() != std::vector<int>{1, 2, 3, 1}) {
+            std::cerr << "Shape mismatch. Actual: [";
+            for (auto d : sliced.shape()) std::cerr << d << " ";
+            std::cerr << "]\n";
+            return false;
+        }
+
+        // Expected values (precomputed)
+        std::vector<float> expected = {26.0f, 28.0f, 30.0f, 34.0f, 36.0f, 38.0f};
+        Tensor expected_tensor({1, 2, 3, 1}, false);
+        expected_tensor.load_data(expected);
+
+        if (!compare_tensors(sliced, expected_tensor, epsilon)) {
+            std::cerr << "Complex slice data mismatch!\n";
+            print_tensor(sliced, "Actual");
+            print_tensor(expected_tensor, "Expected");
+            return false;
+        }
+
+        // Test 2: Single element slice (last element)
+        auto single = original_cpu.slice({
+            {1, 2},     // Index 1 in dim 0
+            {2, 3},     // Index 2 in dim 1
+            {3, 4},     // Index 3 in dim 2
+            {1, 2}      // Index 1 in dim 3
+        });
+
+        Tensor single_expected({1, 1, 1, 1}, false);
+        single_expected.load_data({47.0f}); // Correct value: 47
+
+        if (!compare_tensors(single, single_expected, epsilon)) {
+            std::cerr << "Single element slice failed!\n";
+            print_tensor(single, "Actual");
+            print_tensor(single_expected, "Expected");
+            return false;
+        }
+
+        std::cout << "slice() test passed!\n\n";
+        return true;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "Error in slice() test: " << e.what() << "\n";
+        return false;
+    }
+}
+
 // Test copy
 bool test_copy(bool use_gpu) {
     try {
@@ -2290,5 +2465,23 @@ int main(int argc, char* argv[]) {
         return false;
     }
     
+    // Test at method
+    if (!test_at_method(use_gpu)) {
+        std::cerr << "ERROR test_at_method failed\n";
+        return false;
+    }
+
+    // Test slice method
+    if (!test_slice_method(use_gpu)) {
+        std::cerr << "ERROR test_slice_method failed\n";
+        return false;
+    }
+
+    // Test copy method
+    if (!test_copy(use_gpu)) {
+        std::cerr << "ERROR test_copy failed\n";
+        return false;
+    }
+
     return true;
 }
