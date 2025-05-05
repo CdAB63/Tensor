@@ -1,0 +1,2 @@
+#!/bin/bash
+cmake .. -DUSE_CUDA=ON -DCMAKE_BUILD_TYPE=Debug
